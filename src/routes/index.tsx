@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuthStatus, useShares, useShareStats, useDeleteShare } from "../api/hooks";
 import { Spinner } from "../components/ui/Spinner";
 import { Button } from "../components/ui/Button";
@@ -10,7 +10,7 @@ import { EditShareModal } from "../components/EditShareModal";
 import { useToast } from "../components/ui/Toast";
 import {
   Link as LinkIcon, FileText, Code, Upload, Images,
-  Eye, Plus, BarChart3, Copy, ExternalLink, Trash2, Search, Pencil, Lock,
+  Eye, Plus, BarChart3, Copy, ExternalLink, Trash2, Search, Pencil, Lock, CloudUpload,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -38,6 +38,8 @@ function Dashboard() {
 function DashboardContent() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editingShareId, setEditingShareId] = useState<string | null>(null);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -51,6 +53,43 @@ function DashboardContent() {
   });
   const deleteShare = useDeleteShare();
   const { toast } = useToast();
+
+  // Global drag-and-drop for file upload
+  const dragCounter = useState(0);
+  const handleDragEnter = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer?.types.includes("Files")) {
+      dragCounter[1]((c) => { if (c === 0) setDragOver(true); return c + 1; });
+    }
+  }, []);
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    dragCounter[1]((c) => { const n = c - 1; if (n <= 0) { setDragOver(false); return 0; } return n; });
+  }, []);
+  const handleDragOver = useCallback((e: DragEvent) => { e.preventDefault(); }, []);
+  const handleDrop = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    dragCounter[1](0);
+    const file = e.dataTransfer?.files[0];
+    if (file) {
+      setDroppedFile(file);
+      setWizardOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener("dragenter", handleDragEnter);
+    document.addEventListener("dragleave", handleDragLeave);
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("drop", handleDrop);
+    return () => {
+      document.removeEventListener("dragenter", handleDragEnter);
+      document.removeEventListener("dragleave", handleDragLeave);
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("drop", handleDrop);
+    };
+  }, [handleDragEnter, handleDragLeave, handleDragOver, handleDrop]);
 
   const copyUrl = (slug: string, encrypted: boolean) => {
     const url = `${window.location.origin}/s/${slug}`;
@@ -229,7 +268,18 @@ function DashboardContent() {
         </div>
       )}
 
-      <NewShareWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      {/* Drag-and-drop overlay */}
+      {dragOver && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="bg-white dark:bg-neutral-900 border-2 border-dashed border-primary rounded-2xl p-12 text-center shadow-2xl">
+            <CloudUpload size={48} className="mx-auto mb-4 text-primary animate-bounce" />
+            <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">Drop file to share</div>
+            <div className="text-sm text-neutral-500 mt-1">Release to upload and create a file share</div>
+          </div>
+        </div>
+      )}
+
+      <NewShareWizard open={wizardOpen} onClose={() => { setWizardOpen(false); setDroppedFile(null); }} initialFile={droppedFile} />
       <EditShareModal open={!!editingShareId} onClose={() => setEditingShareId(null)} shareId={editingShareId} />
     </div>
   );

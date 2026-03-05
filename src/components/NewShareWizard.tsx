@@ -24,6 +24,7 @@ import { useRef } from "react";
 interface NewShareWizardProps {
   open: boolean;
   onClose: () => void;
+  initialFile?: File | null;
 }
 
 type ShareTypeOption = "link" | "markdown" | "code" | "file" | "gallery";
@@ -42,13 +43,26 @@ const SHARE_TYPES: Array<{
   { type: "gallery", label: "Gallery", description: "Image gallery with lightbox", icon: Images, color: "text-pink-400 bg-pink-500/10 border-pink-500/20" },
 ];
 
-export function NewShareWizard({ open, onClose }: NewShareWizardProps) {
+export function NewShareWizard({ open, onClose, initialFile }: NewShareWizardProps) {
   const [selectedType, setSelectedType] = useState<ShareTypeOption | null>(null);
   const [result, setResult] = useState<{ slug: string; encrypted: boolean; key?: string } | null>(null);
+  const [preloadedFile, setPreloadedFile] = useState<File | null>(null);
+
+  // When initialFile is provided, jump straight to file mode
+  const prevInitialFile = useRef<File | null>(null);
+  if (initialFile && initialFile !== prevInitialFile.current) {
+    prevInitialFile.current = initialFile;
+    if (!selectedType && !result) {
+      setSelectedType("file");
+      setPreloadedFile(initialFile);
+    }
+  }
 
   const handleClose = () => {
     setSelectedType(null);
     setResult(null);
+    setPreloadedFile(null);
+    prevInitialFile.current = null;
     onClose();
   };
 
@@ -59,6 +73,7 @@ export function NewShareWizard({ open, onClose }: NewShareWizardProps) {
   const handleDone = () => {
     setSelectedType(null);
     setResult(null);
+    setPreloadedFile(null);
   };
 
   const title = result
@@ -83,7 +98,7 @@ export function NewShareWizard({ open, onClose }: NewShareWizardProps) {
       ) : (
         <div>
           <button
-            onClick={() => setSelectedType(null)}
+            onClick={() => { setSelectedType(null); setPreloadedFile(null); }}
             className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-4 transition-colors"
           >
             <ArrowLeft size={14} /> Back to types
@@ -91,7 +106,7 @@ export function NewShareWizard({ open, onClose }: NewShareWizardProps) {
           {selectedType === "link" && <LinkForm onResult={handleResult} />}
           {selectedType === "markdown" && <MarkdownForm onResult={handleResult} />}
           {selectedType === "code" && <CodeForm onResult={handleResult} />}
-          {selectedType === "file" && <FileForm onResult={handleResult} />}
+          {selectedType === "file" && <FileForm onResult={handleResult} initialFile={preloadedFile} />}
           {selectedType === "gallery" && <GalleryForm onResult={handleResult} />}
         </div>
       )}
@@ -408,8 +423,8 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function FileForm({ onResult }: { onResult: (r: { slug: string; encrypted: boolean; key?: string }) => void }) {
-  const [file, setFile] = useState<File | null>(null);
+function FileForm({ onResult, initialFile }: { onResult: (r: { slug: string; encrypted: boolean; key?: string }) => void; initialFile?: File | null }) {
+  const [file, setFile] = useState<File | null>(initialFile || null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);

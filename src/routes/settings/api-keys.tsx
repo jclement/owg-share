@@ -253,6 +253,29 @@ api_post() {
   echo "$resp" | jq -r '.data'
 }
 
+api_get() {
+  local path="$1"
+  local resp
+  resp=$(curl -sf "\${BASE_URL}\${path}" \\
+    -H "Authorization: Bearer \${API_KEY}" 2>/dev/null) || die "API request failed: GET \${path}"
+  echo "$resp"
+}
+
+api_delete() {
+  local path="$1"
+  local resp
+  resp=$(curl -sf -X DELETE "\${BASE_URL}\${path}" \\
+    -H "Authorization: Bearer \${API_KEY}" 2>/dev/null) || die "API request failed: DELETE \${path}"
+  local ok
+  ok=$(echo "$resp" | jq -r '.success // false')
+  if [ "$ok" != "true" ]; then
+    local msg
+    msg=$(echo "$resp" | jq -r '.error.message // "Unknown error"')
+    die "$msg"
+  fi
+  echo "$resp"
+}
+
 api_put_file() {
   local path="$1" file="$2"
   local resp
@@ -325,28 +348,35 @@ output_url() {
   fi
 }
 
-read_content() {
-  local file="\${1:-}"
-  if [ -n "$file" ]; then
-    [ -f "$file" ] || die "File not found: $file"
-    cat "$file"
-  elif [ ! -t 0 ]; then
-    cat
-  else
-    die "No content provided. Use -f <file> or pipe from stdin."
-  fi
+# ── Expiry parsing ─────────────────────────────────────────────────────────
+parse_expiry() {
+  local val="$1"
+  case "$val" in
+    never|none) echo "" ;;
+    *d) local n="\${val%d}"
+        date -u -v+"\${n}"d "+%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \\
+          || date -u -d "+\${n} days" "+%Y-%m-%dT%H:%M:%SZ" ;;
+    *w) local n="\${val%w}"; local days=$((n * 7))
+        date -u -v+"\${days}"d "+%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \\
+          || date -u -d "+\${days} days" "+%Y-%m-%dT%H:%M:%SZ" ;;
+    *h) local n="\${val%h}"
+        date -u -v+"\${n}"H "+%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \\
+          || date -u -d "+\${n} hours" "+%Y-%m-%dT%H:%M:%SZ" ;;
+    *)  echo "$val" ;;
+  esac
 }
 
 # ── Shared option parsing ───────────────────────────────────────────────────
 parse_common_opts() {
-  TITLE="" COMMENT="" EXPIRES="" MAX_HITS=""
+  TITLE="" COMMENT="" EXPIRES="90d" MAX_HITS="" SLUG=""
   while [ \$# -gt 0 ]; do
     case "$1" in
-      -t|--title)   TITLE="$2";    shift 2 ;;
-      -c|--comment) COMMENT="$2";  shift 2 ;;
-      -e|--expires) EXPIRES="$2";  shift 2 ;;
+      -t|--title)    TITLE="$2";    shift 2 ;;
+      -c|--comment)  COMMENT="$2";  shift 2 ;;
+      -e|--expires)  EXPIRES="$2";  shift 2 ;;
       -m|--max-hits) MAX_HITS="$2"; shift 2 ;;
-      *)            EXTRA_ARGS+=("$1"); shift ;;
+      -s|--slug)     SLUG="$2";     shift 2 ;;
+      *)             EXTRA_ARGS+=("$1"); shift ;;
     esac
   done
 }
@@ -355,8 +385,18 @@ json_common() {
   local parts=""
   [ -n "$TITLE" ]    && parts+=", \\"title\\": $(printf '%s' "$TITLE" | jq -Rs .)"
   [ -n "$COMMENT" ]  && parts+=", \\"comment\\": $(printf '%s' "$COMMENT" | jq -Rs .)"
-  [ -n "$EXPIRES" ]  && parts+=", \\"expires_at\\": \\"$EXPIRES\\""
   [ -n "$MAX_HITS" ] && parts+=", \\"max_hits\\": $MAX_HITS"
+
+  # Custom slug
+  if [ -n "$SLUG" ]; then
+    parts+=", \\"slug_type\\": \\"custom\\", \\"custom_slug\\": $(printf '%s' "$SLUG" | jq -Rs .)"
+  fi
+
+  # Expiry (default 90d, -e never to disable)
+  local iso_expiry
+  iso_expiry=$(parse_expiry "$EXPIRES")
+  [ -n "$iso_expiry" ] && parts+=", \\"expires_at\\": \\"$iso_expiry\\""
+
   echo "$parts"
 }
 
@@ -571,6 +611,83 @@ cmd_file() {
   output_url "$slug" "File" "\${TITLE:-$FILENAME}"
 }
 
+cmd_list() {
+  local page=1 type_filter="" count=20
+  local search_args=()
+  while [ \$# -gt 0 ]; do
+    case "$1" in
+      -p|--page)  page="$2";        shift 2 ;;
+      -T|--type)  type_filter="$2";  shift 2 ;;
+      -n|--count) count="$2";        shift 2 ;;
+      *)          search_args+=("$1"); shift ;;
+    esac
+  done
+
+  local query="page=\${page}&per_page=\${count}"
+  [ -n "$type_filter" ] && query+="&type=\${type_filter}"
+  [ "\${#search_args[@]}" -gt 0 ] && query+="&search=$(printf '%s' "\${search_args[0]}" | jq -Rr @uri)"
+
+  local resp
+  resp=$(api_get "/api/shares?\${query}")
+
+  if [ -t 1 ]; then
+    local total page_num
+    total=$(echo "$resp" | jq -r '.meta.total')
+    page_num=$(echo "$resp" | jq -r '.meta.page')
+    local count_shown
+    count_shown=$(echo "$resp" | jq -r '.data | length')
+
+    if [ "$count_shown" -eq 0 ]; then
+      printf "\\n  \${DIM}No shares found.\${RESET}\\n\\n"
+      return
+    fi
+
+    printf "\\n  \${BOLD}%-8s %-20s %-28s %6s  %s\${RESET}\\n" "TYPE" "SLUG" "TITLE" "VIEWS" "CREATED"
+    printf "  \${DIM}%-8s %-20s %-28s %6s  %s\${RESET}\\n" "────────" "────────────────────" "────────────────────────────" "──────" "──────────"
+
+    echo "$resp" | jq -r '.data[] | [.type, .slug, (.title // "—"), (.hits | tostring), .created_at[:10]] | @tsv' | while IFS=\$'\\t' read -r t s title h created; do
+      local color=""
+      case "$t" in
+        link)     color="\${CYAN}" ;;
+        markdown) color="\${GREEN}" ;;
+        code)     color="\${YELLOW}" ;;
+        *)        color="" ;;
+      esac
+      printf "  %s%-8s\${RESET} %-20s %-28s %6s  \${DIM}%s\${RESET}\\n" "$color" "$t" "\${s:0:20}" "\${title:0:28}" "$h" "$created"
+    done
+
+    printf "\\n  \${DIM}%s shares · page %s\${RESET}\\n\\n" "$total" "$page_num"
+  else
+    echo "$resp" | jq -r '.data[] | .slug'
+  fi
+}
+
+cmd_delete() {
+  [ \$# -eq 0 ] && die "Usage: share delete <slug>"
+  local slug="$1"
+
+  # Find the share by slug
+  local resp
+  resp=$(api_get "/api/shares?search=\${slug}&per_page=100")
+  local share_id
+  share_id=$(echo "$resp" | jq -r --arg slug "$slug" '.data[] | select(.slug == \$slug) | .id')
+
+  [ -z "$share_id" ] && die "Share not found: $slug"
+
+  # Confirm unless piped
+  if [ -t 0 ] && [ -t 1 ]; then
+    printf "  Delete share \${BOLD}%s\${RESET}? [y/N] " "$slug"
+    read -r confirm
+    [ "$confirm" != "y" ] && [ "$confirm" != "Y" ] && { echo "  Cancelled."; exit 0; }
+  fi
+
+  api_delete "/api/shares/\${share_id}" >/dev/null
+
+  if [ -t 1 ]; then
+    printf "\\n  \${GREEN}\${BOLD}✓\${RESET} Deleted \${BOLD}%s\${RESET}\\n\\n" "$slug"
+  fi
+}
+
 cmd_help() {
   cat <<HELP
 \${BOLD}share\${RESET} — CLI for OWG Share (\${DIM}\${BASE_URL}\${RESET})
@@ -583,24 +700,37 @@ cmd_help() {
   \${GREEN}markdown\${RESET} [file]           Share markdown (file or stdin)
   \${GREEN}code\${RESET} [file] [-l lang]      Share code (file or stdin)
   \${GREEN}file\${RESET} [path]                Upload and share a file (path or stdin)
+  \${GREEN}list\${RESET} [search]             List shares (with optional search)
+  \${GREEN}delete\${RESET} <slug>              Delete a share by slug
   \${GREEN}help\${RESET}                       Show this help
 
 \${BOLD}OPTIONS\${RESET}
   -t, --title <title>     Set share title
   -c, --comment <text>    Add internal comment
-  -e, --expires <iso>     Set expiration (ISO 8601 datetime)
+  -s, --slug <slug>       Set a custom slug (vanity URL)
+  -e, --expires <when>    Set expiration (default: 90d)
+                          Formats: 90d, 2w, 24h, never, or ISO 8601
   -m, --max-hits <n>      Set maximum view count
   -l, --language <lang>   Set language (code only)
   -n, --name <filename>   Override filename (file only, useful with stdin)
 
+\${BOLD}LIST OPTIONS\${RESET}
+  -p, --page <n>          Page number (default: 1)
+  -T, --type <type>       Filter by type (link, markdown, code, file, gallery)
+  -n, --count <n>         Results per page (default: 20)
+
 \${BOLD}EXAMPLES\${RESET}
   share link https://example.com -t "Example"
-  share markdown README.md
-  share code main.py -l python
+  share link https://example.com -s my-link       \${DIM}# custom slug\${RESET}
+  share markdown README.md -e 7d                  \${DIM}# expires in 7 days\${RESET}
+  share code main.py -l python -e never            \${DIM}# no expiry\${RESET}
   share file photo.jpg -t "Vacation photo"
   echo "hello world" | share markdown
   cat backup.tar.gz | share file -n backup.tar.gz
-  share link https://x.com/post | pbcopy   \${DIM}# outputs just the URL\${RESET}
+  share list                                       \${DIM}# list recent shares\${RESET}
+  share list -T code                               \${DIM}# list code shares only\${RESET}
+  share delete abc123                              \${DIM}# delete by slug\${RESET}
+  share link https://x.com/post | pbcopy           \${DIM}# pipe-friendly output\${RESET}
 HELP
 }
 
@@ -615,6 +745,8 @@ case "$cmd" in
   markdown|md) cmd_markdown "$@" ;;
   code)     cmd_code "$@" ;;
   file)     cmd_file "$@" ;;
+  list|ls)  cmd_list "$@" ;;
+  delete|rm) cmd_delete "$@" ;;
   help|-h|--help) cmd_help ;;
   *)        die "Unknown command: $cmd. Run 'share help' for usage." ;;
 esac
