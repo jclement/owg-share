@@ -52,6 +52,7 @@ function ApiKeysPage() {
   return (
     <div className="space-y-8">
       <div>
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-3">API Keys</h1>
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             API keys allow programmatic access to create and manage shares.

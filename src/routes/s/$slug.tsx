@@ -7,7 +7,7 @@ import { FullPageSpinner } from "../../components/ui/Spinner";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import {
-  extractKeyFromHash, importKey, decryptText,
+  extractKeyFromHash, importKey, decryptText, decryptFile,
 } from "../../lib/crypto";
 import {
   Download, Copy, Check, Lock, Eye, Calendar,
@@ -103,6 +103,8 @@ function EncryptedView({ data }: { data: ShareData }) {
   const [error, setError] = useState("");
   const [decrypting, setDecrypting] = useState(false);
 
+  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
+
   const doDecrypt = useCallback(async (keyStr: string) => {
     setDecrypting(true);
     setError("");
@@ -119,6 +121,7 @@ function EncryptedView({ data }: { data: ShareData }) {
         decrypted.code = { ...data.code, content: plaintext };
       }
 
+      setCryptoKey(key);
       setDecryptedData(decrypted);
     } catch {
       setError("Decryption failed. Check the key and try again.");
@@ -136,7 +139,7 @@ function EncryptedView({ data }: { data: ShareData }) {
   }, [doDecrypt]);
 
   if (decryptedData) {
-    return <ContentRenderer data={decryptedData} />;
+    return <ContentRenderer data={decryptedData} cryptoKey={cryptoKey} />;
   }
 
   return (
@@ -175,16 +178,16 @@ function EncryptedView({ data }: { data: ShareData }) {
   );
 }
 
-function ContentRenderer({ data }: { data: ShareData }) {
+function ContentRenderer({ data, cryptoKey }: { data: ShareData; cryptoKey?: CryptoKey | null }) {
   switch (data.type) {
     case "markdown":
       return <MarkdownRenderer content={data.markdown?.content || ""} />;
     case "code":
       return <CodeRenderer content={data.code?.content || ""} language={data.code?.language} filename={data.code?.filename} slug={data.slug} />;
     case "file":
-      return <FileRenderer slug={data.slug} file={data.file!} encrypted={data.encrypted} />;
+      return <FileRenderer slug={data.slug} file={data.file!} encrypted={data.encrypted} cryptoKey={cryptoKey} />;
     case "gallery":
-      return <GalleryRenderer slug={data.slug} images={data.images || []} encrypted={data.encrypted} />;
+      return <GalleryRenderer slug={data.slug} images={data.images || []} encrypted={data.encrypted} cryptoKey={cryptoKey} />;
     default:
       return <div className="text-neutral-500">Unknown content type</div>;
   }
@@ -442,14 +445,62 @@ function CodeRenderer({ content, language, filename, slug }: { content: string; 
   );
 }
 
-function FileRenderer({ slug, file, encrypted }: { slug: string; file: ShareData["file"] & {}; encrypted: boolean }) {
+function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file: ShareData["file"] & {}; encrypted: boolean; cryptoKey?: CryptoKey | null }) {
   if (!file) return null;
+  const [downloading, setDownloading] = useState(false);
+  const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null);
   const isImage = file.content_type.startsWith("image/");
   const isVideo = file.content_type.startsWith("video/");
   const isAudio = file.content_type.startsWith("audio/");
   const isPdf = file.content_type === "application/pdf";
 
   const downloadUrl = `/s/${slug}/download`;
+
+  const handleEncryptedDownload = async () => {
+    if (!cryptoKey) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(downloadUrl, { credentials: "same-origin" });
+      if (!res.ok) throw new Error("Download failed");
+      const ciphertext = await res.arrayBuffer();
+      const plaintext = await decryptFile(ciphertext, cryptoKey);
+      const blob = new Blob([plaintext], { type: file.content_type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Decryption failed");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Auto-decrypt for preview when we have the key
+  useEffect(() => {
+    if (!cryptoKey || encrypted) return;
+    // cryptoKey is set but encrypted=false means EncryptedView already validated the key
+    // Fetch and decrypt for inline preview
+    if (isImage || isVideo || isAudio || isPdf) {
+      (async () => {
+        try {
+          const res = await fetch(downloadUrl, { credentials: "same-origin" });
+          if (!res.ok) return;
+          const ciphertext = await res.arrayBuffer();
+          const plaintext = await decryptFile(ciphertext, cryptoKey);
+          const blob = new Blob([plaintext], { type: file.content_type });
+          setDecryptedUrl(URL.createObjectURL(blob));
+        } catch {
+          // Preview unavailable, download still works
+        }
+      })();
+    }
+    return () => { if (decryptedUrl) URL.revokeObjectURL(decryptedUrl); };
+  }, [cryptoKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const previewUrl = decryptedUrl || (!cryptoKey ? downloadUrl : null);
 
   return (
     <div className="space-y-6">
@@ -459,30 +510,55 @@ function FileRenderer({ slug, file, encrypted }: { slug: string; file: ShareData
           <div className="font-medium text-neutral-800 dark:text-neutral-200">{file.filename}</div>
           <div className="text-sm text-neutral-500">{file.content_type} · {formatBytes(file.size)}</div>
         </div>
-        {!encrypted && (
+        {cryptoKey ? (
+          <Button variant="secondary" onClick={handleEncryptedDownload} loading={downloading}>
+            <Download size={16} /> Download
+          </Button>
+        ) : (
           <a href={downloadUrl} download>
             <Button variant="secondary"><Download size={16} /> Download</Button>
           </a>
         )}
       </div>
 
-      {!encrypted && isImage && (
-        <img src={downloadUrl} alt={file.filename} className="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-800" />
+      {previewUrl && isImage && (
+        <img src={previewUrl} alt={file.filename} className="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-800" />
       )}
-      {!encrypted && isVideo && (
-        <video src={downloadUrl} controls className="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-800" />
+      {previewUrl && isVideo && (
+        <video src={previewUrl} controls className="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-800" />
       )}
-      {!encrypted && isAudio && (
-        <audio src={downloadUrl} controls className="w-full" />
+      {previewUrl && isAudio && (
+        <audio src={previewUrl} controls className="w-full" />
       )}
-      {!encrypted && isPdf && (
-        <iframe src={downloadUrl} className="w-full h-[80vh] rounded-lg border border-neutral-300 dark:border-neutral-800" />
+      {previewUrl && isPdf && (
+        <iframe src={previewUrl} className="w-full h-[80vh] rounded-lg border border-neutral-300 dark:border-neutral-800" />
       )}
     </div>
   );
 }
 
-function GalleryRenderer({ slug, images, encrypted }: { slug: string; images: NonNullable<ShareData["images"]>; encrypted: boolean }) {
+function DecryptedImage({ src, alt, className, cryptoKey, contentType }: { src: string; alt: string; className?: string; cryptoKey: CryptoKey; contentType: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let revoke: string | null = null;
+    (async () => {
+      try {
+        const res = await fetch(src, { credentials: "same-origin" });
+        if (!res.ok) return;
+        const ciphertext = await res.arrayBuffer();
+        const plaintext = await decryptFile(ciphertext, cryptoKey);
+        const blob = new Blob([plaintext], { type: contentType });
+        revoke = URL.createObjectURL(blob);
+        setUrl(revoke);
+      } catch { /* preview unavailable */ }
+    })();
+    return () => { if (revoke) URL.revokeObjectURL(revoke); };
+  }, [src, cryptoKey, contentType]);
+  if (!url) return <div className={`${className} bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center`}><FullPageSpinner /></div>;
+  return <img src={url} alt={alt} className={className} />;
+}
+
+function GalleryRenderer({ slug, images, encrypted, cryptoKey }: { slug: string; images: NonNullable<ShareData["images"]>; encrypted: boolean; cryptoKey?: CryptoKey | null }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -500,6 +576,8 @@ function GalleryRenderer({ slug, images, encrypted }: { slug: string; images: No
     return <div className="text-center py-12 text-neutral-500">No images in this gallery</div>;
   }
 
+  const imgSrc = (img: NonNullable<ShareData["images"]>[0]) => `/s/${slug}/image/${img.id}`;
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -507,11 +585,19 @@ function GalleryRenderer({ slug, images, encrypted }: { slug: string; images: No
           <div
             key={img.id}
             className="relative group cursor-pointer overflow-hidden rounded-lg border border-neutral-300 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-700 transition-colors"
-            onClick={() => !encrypted && setLightboxIndex(i)}
+            onClick={() => setLightboxIndex(i)}
           >
-            {!encrypted ? (
+            {cryptoKey ? (
+              <DecryptedImage
+                src={imgSrc(img)}
+                alt={img.caption || img.filename}
+                className="w-full h-48 object-cover transition-transform group-hover:scale-105"
+                cryptoKey={cryptoKey}
+                contentType={img.content_type}
+              />
+            ) : !encrypted ? (
               <img
-                src={`/s/${slug}/image/${img.id}`}
+                src={imgSrc(img)}
                 alt={img.caption || img.filename}
                 className="w-full h-48 object-cover transition-transform group-hover:scale-105"
                 loading="lazy"
@@ -522,7 +608,7 @@ function GalleryRenderer({ slug, images, encrypted }: { slug: string; images: No
               </div>
             )}
             {img.caption && (
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+              <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent p-3">
                 <p className="text-sm text-white">{img.caption}</p>
               </div>
             )}
@@ -546,12 +632,22 @@ function GalleryRenderer({ slug, images, encrypted }: { slug: string; images: No
             </button>
           )}
 
-          <img
-            src={`/s/${slug}/image/${images[lightboxIndex].id}`}
-            alt={images[lightboxIndex].caption || images[lightboxIndex].filename}
-            className="max-w-[90vw] max-h-[90vh] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {cryptoKey ? (
+            <DecryptedImage
+              src={imgSrc(images[lightboxIndex])}
+              alt={images[lightboxIndex].caption || images[lightboxIndex].filename}
+              className="max-w-[90vw] max-h-[90vh] object-contain"
+              cryptoKey={cryptoKey}
+              contentType={images[lightboxIndex].content_type}
+            />
+          ) : (
+            <img
+              src={imgSrc(images[lightboxIndex])}
+              alt={images[lightboxIndex].caption || images[lightboxIndex].filename}
+              className="max-w-[90vw] max-h-[90vh] object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
 
           {lightboxIndex < images.length - 1 && (
             <button

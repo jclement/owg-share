@@ -135,7 +135,7 @@ publicRoutes.get("/:slug/download", async (c) => {
   return new Response(object.body, {
     headers: {
       "Content-Type": fileData.content_type,
-      "Content-Disposition": `attachment; filename="${fileData.filename}"`,
+      "Content-Disposition": `attachment; filename="${fileData.filename.replace(/["\\]/g, '_')}"`,
       "Cache-Control": "private, max-age=3600",
     },
   });
@@ -155,8 +155,8 @@ publicRoutes.get("/:slug/image/:imageId", async (c) => {
   if (share.expires_at && new Date(share.expires_at) < new Date()) return error("Expired", "EXPIRED", 410);
 
   const image = await c.env.DB.prepare(
-    "SELECT filename, content_type, r2_key FROM gallery_images WHERE id = ?"
-  ).bind(imageId).first<{ filename: string; content_type: string; r2_key: string }>();
+    "SELECT gi.filename, gi.content_type, gi.r2_key FROM gallery_images gi JOIN gallery_shares gs ON gi.gallery_id = gs.id WHERE gi.id = ? AND gs.share_id = ?"
+  ).bind(imageId, share.id).first<{ filename: string; content_type: string; r2_key: string }>();
 
   if (!image) return error("Image not found", "NOT_FOUND", 404);
 

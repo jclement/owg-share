@@ -61,6 +61,7 @@ function PasskeysPage() {
 
   return (
     <div>
+      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-1">Passkeys</h1>
       <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
         Passkeys provide passwordless authentication using biometrics or security keys.
       </p>

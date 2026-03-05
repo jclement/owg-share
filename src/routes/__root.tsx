@@ -5,8 +5,8 @@ import { useTheme } from "../components/ThemeProvider";
 import { ToastProvider } from "../components/ui/Toast";
 import { FullPageSpinner } from "../components/ui/Spinner";
 import {
-  Settings, LogOut, Share2,
-  Sun, Moon, Monitor, User, ChevronDown
+  LogOut, Share2,
+  Sun, Moon, Monitor, User, ChevronDown, Shield, Key
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
@@ -101,12 +101,20 @@ function UserMenu({ username }: { username: string }) {
       {open && (
         <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg shadow-lg py-1 z-50">
           <Link
-            to="/settings"
+            to="/settings/passkeys"
             onClick={() => setOpen(false)}
             className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
-            <Settings size={15} />
-            Settings
+            <Shield size={15} />
+            Passkeys
+          </Link>
+          <Link
+            to="/settings/api-keys"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <Key size={15} />
+            API Keys
           </Link>
           <div className="border-t border-neutral-200 dark:border-neutral-800 my-1" />
           <button

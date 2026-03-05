@@ -13,6 +13,7 @@ import {
   useUpdateFile, useUpdateGallery, useUpdateGalleryImage,
   useDeleteGalleryImage, useAddGalleryImages, usePresignUpload,
 } from "../api/hooks";
+import { multipartUpload, MULTIPART_THRESHOLD } from "../api/client";
 import type { ShareDetail } from "../api/hooks";
 
 interface EditShareModalProps {
@@ -271,13 +272,19 @@ function EditGalleryForm({ share, onClose }: { share: ShareDetail; onClose: () =
     try {
       const uploaded: Array<{ filename: string; content_type: string; size: number; r2_key: string }> = [];
       for (const file of imageFiles) {
-        const { uploadId, r2Key } = await presignUpload.mutateAsync({
-          filename: file.name, contentType: file.type, size: file.size,
-        });
-        const res = await fetch(`/api/upload/file/${uploadId}`, {
-          method: "PUT", body: await file.arrayBuffer(), credentials: "same-origin",
-        });
-        if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
+        let r2Key: string;
+        if (file.size > MULTIPART_THRESHOLD) {
+          r2Key = await multipartUpload(await file.arrayBuffer(), file.name, file.type);
+        } else {
+          const { uploadId, r2Key: key } = await presignUpload.mutateAsync({
+            filename: file.name, contentType: file.type, size: file.size,
+          });
+          r2Key = key;
+          const res = await fetch(`/api/upload/file/${uploadId}`, {
+            method: "PUT", body: await file.arrayBuffer(), credentials: "same-origin",
+          });
+          if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
+        }
         uploaded.push({ filename: file.name, content_type: file.type, size: file.size, r2_key: r2Key });
       }
       await addImages.mutateAsync({ shareId: share.id, images: uploaded });

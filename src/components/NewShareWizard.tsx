@@ -15,6 +15,7 @@ import {
   useCreateLink, useCreateMarkdown, useCreateCode, useCreateFile,
   useCreateGallery, usePresignUpload,
 } from "../api/hooks";
+import { multipartUpload, MULTIPART_THRESHOLD } from "../api/client";
 import {
   encryptText, encryptFile, generateEncryptionKey, exportKey,
 } from "../lib/crypto";
@@ -339,24 +340,35 @@ function FileForm({ onResult }: { onResult: (r: { slug: string; encrypted: boole
         setProgress(15);
       }
 
-      const { uploadId, r2Key } = await presignUpload.mutateAsync({
-        filename: file.name,
-        contentType: encrypted ? "application/octet-stream" : file.type,
-        size: fileData.byteLength,
-      });
-      setProgress(20);
+      const contentType = encrypted ? "application/octet-stream" : file.type;
+      let r2Key: string;
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setProgress(20 + Math.round((e.loaded / e.total) * 70));
-        };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Upload failed")));
-        xhr.onerror = () => reject(new Error("Upload failed"));
-        xhr.open("PUT", `/api/upload/file/${uploadId}`);
-        xhr.withCredentials = true;
-        xhr.send(fileData);
-      });
+      if (fileData.byteLength > MULTIPART_THRESHOLD) {
+        // Multipart chunked upload for large files
+        setProgress(20);
+        r2Key = await multipartUpload(fileData, file.name, contentType, (fraction) => {
+          setProgress(20 + Math.round(fraction * 70));
+        });
+      } else {
+        // Single upload for small files
+        const { uploadId, r2Key: key } = await presignUpload.mutateAsync({
+          filename: file.name, contentType, size: fileData.byteLength,
+        });
+        r2Key = key;
+        setProgress(20);
+
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setProgress(20 + Math.round((e.loaded / e.total) * 70));
+          };
+          xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Upload failed")));
+          xhr.onerror = () => reject(new Error("Upload failed"));
+          xhr.open("PUT", `/api/upload/file/${uploadId}`);
+          xhr.withCredentials = true;
+          xhr.send(fileData);
+        });
+      }
       setProgress(90);
 
       const shareData = await createFile.mutateAsync({
@@ -461,16 +473,21 @@ function GalleryForm({ onResult }: { onResult: (r: { slug: string; encrypted: bo
         let fileData = await file.arrayBuffer();
         if (encKey) fileData = await encryptFile(fileData, encKey);
 
-        const { uploadId, r2Key } = await presignUpload.mutateAsync({
-          filename: file.name,
-          contentType: encrypted ? "application/octet-stream" : file.type,
-          size: fileData.byteLength,
-        });
+        const contentType = encrypted ? "application/octet-stream" : file.type;
+        let r2Key: string;
 
-        const res = await fetch(`/api/upload/file/${uploadId}`, {
-          method: "PUT", body: fileData, credentials: "same-origin",
-        });
-        if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
+        if (fileData.byteLength > MULTIPART_THRESHOLD) {
+          r2Key = await multipartUpload(fileData, file.name, contentType);
+        } else {
+          const { uploadId, r2Key: key } = await presignUpload.mutateAsync({
+            filename: file.name, contentType, size: fileData.byteLength,
+          });
+          r2Key = key;
+          const res = await fetch(`/api/upload/file/${uploadId}`, {
+            method: "PUT", body: fileData, credentials: "same-origin",
+          });
+          if (!res.ok) throw new Error(`Failed to upload ${file.name}`);
+        }
 
         uploadedImages.push({
           filename: file.name, content_type: file.type, size: file.size,

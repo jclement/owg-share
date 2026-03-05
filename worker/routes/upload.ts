@@ -95,6 +95,33 @@ upload.post("/presign-multipart", async (c) => {
   });
 });
 
+// Multipart upload - upload a single part
+upload.put("/multipart-part/:uploadId/:partNumber", async (c) => {
+  const userId = c.get("userId");
+  const uploadId = c.req.param("uploadId");
+  const partNumber = parseInt(c.req.param("partNumber"), 10);
+
+  const uploadData = await c.env.KV.get(`multipart:${uploadId}`);
+  if (!uploadData) {
+    return error("Multipart upload session not found", "UPLOAD_NOT_FOUND");
+  }
+
+  const { userId: expectedUserId, r2Key } = JSON.parse(uploadData);
+  if (expectedUserId !== userId) {
+    return error("Unauthorized", "UNAUTHORIZED", 403);
+  }
+
+  const body = c.req.raw.body;
+  if (!body) {
+    return error("No request body", "VALIDATION_ERROR");
+  }
+
+  const multipartUpload = c.env.R2.resumeMultipartUpload(r2Key, uploadId);
+  const part = await multipartUpload.uploadPart(partNumber, body);
+
+  return json({ partNumber: part.partNumber, etag: part.etag });
+});
+
 // Multipart upload - complete
 upload.post("/complete-multipart", async (c) => {
   const userId = c.get("userId");

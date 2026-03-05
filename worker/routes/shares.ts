@@ -353,6 +353,10 @@ shares.post("/files", async (c) => {
     return error("Missing required fields", "VALIDATION_ERROR");
   }
 
+  if (!body.r2_key.startsWith(`${userId}/`)) {
+    return error("Invalid file reference", "UNAUTHORIZED", 403);
+  }
+
   const slugType = body.encrypted ? "encrypted" : (body.slug_type || "long");
   const slug = await resolveSlug(c.env.DB, slugType, body.custom_slug);
   if (typeof slug !== "string") return slug;
@@ -411,6 +415,10 @@ shares.post("/galleries", async (c) => {
     max_hits?: number;
     images?: Array<{ filename: string; content_type: string; size: number; r2_key: string; caption?: string }>;
   }>();
+
+  if (body.images?.some(img => !img.r2_key.startsWith(`${userId}/`))) {
+    return error("Invalid file reference", "UNAUTHORIZED", 403);
+  }
 
   const slugType = body.encrypted ? "encrypted" : (body.slug_type || "long");
   const slug = await resolveSlug(c.env.DB, slugType, body.custom_slug);
@@ -476,6 +484,10 @@ shares.post("/galleries/:id/images", async (c) => {
     images: Array<{ filename: string; content_type: string; size: number; r2_key: string; caption?: string }>;
   }>();
 
+  if (body.images.some(img => !img.r2_key.startsWith(`${userId}/`))) {
+    return error("Invalid file reference", "UNAUTHORIZED", 403);
+  }
+
   const share = await c.env.DB.prepare(
     "SELECT id FROM shares WHERE id = ? AND user_id = ? AND type = 'gallery'"
   ).bind(id, userId).first();
@@ -519,8 +531,9 @@ shares.put("/galleries/:id/images/:imgId", async (c) => {
   if (!share) return error("Gallery not found", "NOT_FOUND", 404);
 
   if (body.caption !== undefined) {
-    await c.env.DB.prepare("UPDATE gallery_images SET caption = ? WHERE id = ?")
-      .bind(body.caption || null, imgId).run();
+    await c.env.DB.prepare(
+      "UPDATE gallery_images SET caption = ? WHERE id = ? AND gallery_id IN (SELECT id FROM gallery_shares WHERE share_id = ?)"
+    ).bind(body.caption || null, imgId, id).run();
   }
 
   return json({ updated: true });
@@ -538,8 +551,8 @@ shares.delete("/galleries/:id/images/:imgId", async (c) => {
   if (!share) return error("Gallery not found", "NOT_FOUND", 404);
 
   const image = await c.env.DB.prepare(
-    "SELECT r2_key FROM gallery_images WHERE id = ?"
-  ).bind(imgId).first<{ r2_key: string }>();
+    "SELECT gi.r2_key FROM gallery_images gi JOIN gallery_shares gs ON gi.gallery_id = gs.id WHERE gi.id = ? AND gs.share_id = ?"
+  ).bind(imgId, id).first<{ r2_key: string }>();
 
   if (image) {
     await c.env.R2.delete(image.r2_key);
@@ -561,7 +574,9 @@ shares.post("/galleries/:id/reorder", async (c) => {
   if (!share) return error("Gallery not found", "NOT_FOUND", 404);
 
   const statements = body.imageIds.map((imgId, i) =>
-    c.env.DB.prepare("UPDATE gallery_images SET sort_order = ? WHERE id = ?").bind(i, imgId)
+    c.env.DB.prepare(
+      "UPDATE gallery_images SET sort_order = ? WHERE id = ? AND gallery_id IN (SELECT id FROM gallery_shares WHERE share_id = ?)"
+    ).bind(i, imgId, id)
   );
 
   await c.env.DB.batch(statements);

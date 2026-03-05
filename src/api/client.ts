@@ -61,6 +61,50 @@ export const api = {
   },
 };
 
+const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks (R2 min is 5MB, CF limit is 100MB)
+export const MULTIPART_THRESHOLD = 90 * 1024 * 1024; // Use multipart for files > 90MB
+
+export async function multipartUpload(
+  data: ArrayBuffer,
+  filename: string,
+  contentType: string,
+  onProgress?: (fraction: number) => void,
+): Promise<string> {
+  // 1. Create multipart upload
+  const { uploadId, r2Key } = await api.post<{ uploadId: string; r2Key: string }>(
+    "/api/upload/presign-multipart",
+    { filename, contentType },
+  );
+
+  // 2. Upload parts
+  const parts: Array<{ partNumber: number; etag: string }> = [];
+  const totalParts = Math.ceil(data.byteLength / CHUNK_SIZE);
+
+  for (let i = 0; i < totalParts; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, data.byteLength);
+    const chunk = data.slice(start, end);
+    const partNumber = i + 1;
+
+    const res = await fetch(`/api/upload/multipart-part/${uploadId}/${partNumber}`, {
+      method: "PUT",
+      body: chunk,
+      credentials: "same-origin",
+    });
+    if (!res.ok) throw new Error(`Failed to upload part ${partNumber}`);
+
+    const result = await res.json() as { success: boolean; data: { partNumber: number; etag: string } };
+    parts.push(result.data);
+
+    onProgress?.((i + 1) / totalParts);
+  }
+
+  // 3. Complete
+  await api.post("/api/upload/complete-multipart", { uploadId, r2Key, parts });
+
+  return r2Key;
+}
+
 export type PaginatedResponse<T> = {
   success: true;
   data: T[];
