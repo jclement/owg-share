@@ -1,0 +1,33 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "owg-share"
+compatibility_date = "2026-03-04"
+main = "./worker/index.ts"
+
+[assets]
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/s/*"]
+
+[vars]
+ENVIRONMENT = "production"
+APP_NAME = "OWG Share"
+
+# Relational data (users, passkeys, shares)
+[[d1_databases]]
+binding = "DB"
+database_name = "owg-share-db"
+
+# Sessions, challenges, rate limiting
+[[kv_namespaces]]
+binding = "KV"
+
+# File storage (uploads, gallery images)
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "owg-share-storage"
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[observability]
+enabled = true

@@ -1,0 +1,63 @@
+[tools]
+node = "22"
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+[tasks.dev]
+description = "Start dev server with hot reload"
+run = "vite"
+depends = ["install"]
+
+[tasks.build]
+description = "Build for production"
+run = "vite build"
+depends = ["install"]
+
+[tasks.preview]
+description = "Preview production build locally"
+run = "vite preview"
+depends = ["build"]
+
+[tasks.deploy]
+description = "Build and deploy to Cloudflare"
+run = "vite build && wrangler deploy"
+depends = ["install"]
+
+[tasks.test]
+description = "Run all tests"
+run = "vitest run"
+depends = ["install"]
+
+[tasks."test:watch"]
+description = "Run tests in watch mode"
+run = "vitest"
+depends = ["install"]
+
+[tasks.lint]
+description = "Run linter"
+run = "eslint src/ worker/"
+depends = ["install"]
+
+[tasks.typecheck]
+description = "Type-check frontend and worker"
+run = "tsc --noEmit && wrangler types"
+depends = ["install"]
+
+[tasks."db:migrate"]
+description = "Apply D1 migrations locally"
+run = "wrangler d1 migrations apply owg-share-db --local"
+
+[tasks."db:migrate:prod"]
+description = "Apply D1 migrations to production"
+run = "wrangler d1 migrations apply owg-share-db --remote"
+
+[tasks."db:new"]
+description = "Create a new D1 migration"
+run = "wrangler d1 migrations create owg-share-db \"$1\""
+
+[tasks.install]
+description = "Install npm dependencies"
+run = "npm install"
+sources = ["package.json", "package-lock.json"]
+outputs = ["node_modules/.package-lock.json"]

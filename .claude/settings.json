@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npx tsr generate)",
+      "Bash(npx @tanstack/router-cli generate --routesDirectory src/routes --generatedRouteTree src/routeTree.gen.ts)",
+      "Bash(npx vite build)",
+      "Bash(npx vitest run)",
+      "Bash(npx @tanstack/router-cli generate --config vite.config.ts)"
+    ]
+  }
+}
