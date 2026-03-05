@@ -30,7 +30,7 @@ const LANGUAGES = [
   { value: "c", label: "C" }, { value: "cpp", label: "C++" },
   { value: "csharp", label: "C#" }, { value: "ruby", label: "Ruby" },
   { value: "php", label: "PHP" }, { value: "swift", label: "Swift" },
-  { value: "kotlin", label: "Kotlin" }, { value: "sql", label: "SQL" },
+  { value: "kotlin", label: "Kotlin" }, { value: "elixir", label: "Elixir" }, { value: "sql", label: "SQL" },
   { value: "html", label: "HTML" }, { value: "css", label: "CSS" },
   { value: "json", label: "JSON" }, { value: "yaml", label: "YAML" },
   { value: "toml", label: "TOML" }, { value: "bash", label: "Bash" },

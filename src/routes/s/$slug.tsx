@@ -25,6 +25,7 @@ interface ShareData {
   title: string | null;
   encrypted: boolean;
   hits: number;
+  max_hits: number | null;
   created_at: string;
   markdown?: { content: string };
   code?: { content: string; language: string | null; filename: string | null };
@@ -81,7 +82,9 @@ function PublicViewPage() {
           {data.title && <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{data.title}</h1>}
           <div className="flex items-center gap-4 text-sm text-neutral-500">
             <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(data.created_at).toLocaleDateString()}</span>
-            <span className="flex items-center gap-1"><Eye size={14} /> {data.hits} views</span>
+            <span className={`flex items-center gap-1 ${data.max_hits && data.hits >= data.max_hits ? "text-red-500 dark:text-red-400" : ""}`}>
+              <Eye size={14} /> {data.max_hits ? `${data.hits}/${data.max_hits}` : data.hits} views
+            </span>
             {data.encrypted && <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-500"><Lock size={14} /> Encrypted</span>}
           </div>
         </div>

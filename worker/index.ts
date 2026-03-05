@@ -46,9 +46,9 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 async function cleanupExpiredShares(env: Env) {
-  // Find expired shares
+  // Find expired shares and shares that exceeded max_hits
   const expired = await env.DB.prepare(
-    "SELECT id, type FROM shares WHERE expires_at IS NOT NULL AND expires_at < datetime('now')"
+    "SELECT id, type FROM shares WHERE (expires_at IS NOT NULL AND expires_at < datetime('now')) OR (max_hits IS NOT NULL AND hits >= max_hits)"
   ).all<{ id: string; type: string }>();
 
   if (expired.results.length === 0) return;
@@ -73,19 +73,10 @@ async function cleanupExpiredShares(env: Env) {
     }
   }
 
-  // Also clean up shares that exceeded max_hits
-  const maxHitShares = await env.DB.prepare(
-    "SELECT id, type FROM shares WHERE max_hits IS NOT NULL AND hits >= max_hits"
-  ).all<{ id: string; type: string }>();
-
-  const allIds = [...expired.results, ...maxHitShares.results].map((s) => s.id);
-  const uniqueIds = [...new Set(allIds)];
-
-  // Batch delete
-  if (uniqueIds.length > 0) {
-    const placeholders = uniqueIds.map(() => "?").join(",");
-    await env.DB.prepare(`DELETE FROM shares WHERE id IN (${placeholders})`)
-      .bind(...uniqueIds)
-      .run();
-  }
+  // Batch delete DB rows
+  const ids = expired.results.map((s) => s.id);
+  const placeholders = ids.map(() => "?").join(",");
+  await env.DB.prepare(`DELETE FROM shares WHERE id IN (${placeholders})`)
+    .bind(...ids)
+    .run();
 }

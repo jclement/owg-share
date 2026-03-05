@@ -86,6 +86,7 @@ export function ShareFormFields({
               { value: "10d", label: "10 days" },
               { value: "30d", label: "30 days" },
               { value: "60d", label: "60 days" },
+              { value: "90d", label: "90 days" },
               ...(currentExpiresAt !== undefined ? [{ value: "never", label: "Remove expiry" }] : []),
             ]}
           />
@@ -144,6 +145,7 @@ export function computeExpiresAt(value: string): string | null | undefined {
     "10d": 10 * DAY,
     "30d": 30 * DAY,
     "60d": 60 * DAY,
+    "90d": 90 * DAY,
   };
   if (ms[value]) {
     return new Date(Date.now() + ms[value]).toISOString();

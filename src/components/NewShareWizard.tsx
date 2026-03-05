@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Link as LinkIcon, FileText, Code as CodeIcon, Upload, Images,
-  ArrowLeft,
+  ArrowLeft, HelpCircle,
 } from "lucide-react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
@@ -127,7 +127,7 @@ function useCommonFields() {
   const [encrypted, setEncrypted] = useState(false);
   const [slugType, setSlugType] = useState("short");
   const [customSlug, setCustomSlug] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
+  const [expiresAt, setExpiresAt] = useState("90d");
   const [maxHits, setMaxHits] = useState("");
 
   const formProps = {
@@ -206,10 +206,21 @@ function MarkdownForm({ onResult }: { onResult: (r: { slug: string; encrypted: b
     );
   };
 
+  const [showSyntaxGuide, setShowSyntaxGuide] = useState(false);
+
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Content</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Content</label>
+          <button
+            type="button"
+            onClick={() => setShowSyntaxGuide(true)}
+            className="flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+          >
+            <HelpCircle size={14} /> Syntax Guide
+          </button>
+        </div>
         <CodeEditor
           value={content}
           onChange={setContent}
@@ -220,7 +231,102 @@ function MarkdownForm({ onResult }: { onResult: (r: { slug: string; encrypted: b
       </div>
       <ShareFormFields {...formProps} />
       <Button onClick={handleSubmit} loading={createMarkdown.isPending} className="w-full">Create Document</Button>
+      <MarkdownSyntaxGuide open={showSyntaxGuide} onClose={() => setShowSyntaxGuide(false)} />
     </div>
+  );
+}
+
+function MarkdownSyntaxGuide({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Modal open={open} onClose={onClose} title="Markdown Syntax Guide" size="wide">
+      <div className="space-y-6 text-sm text-neutral-700 dark:text-neutral-300">
+        <Section title="Basic Formatting">
+          <Row syntax="**bold**" result="bold" />
+          <Row syntax="*italic*" result="italic" />
+          <Row syntax="~~strikethrough~~" result="strikethrough" />
+          <Row syntax="`inline code`" result="inline code" />
+          <Row syntax="[link text](url)" result="link" />
+          <Row syntax="![alt](image-url)" result="image" />
+        </Section>
+
+        <Section title="Headings">
+          <Code>{`# Heading 1\n## Heading 2\n### Heading 3`}</Code>
+        </Section>
+
+        <Section title="Lists">
+          <Code>{`- Unordered item\n- Another item\n  - Nested item\n\n1. Ordered item\n2. Another item`}</Code>
+        </Section>
+
+        <Section title="Code Blocks">
+          <Code>{`\`\`\`javascript\nconst x = 42;\nconsole.log(x);\n\`\`\``}</Code>
+          <p className="text-xs text-neutral-500 mt-1">Supports syntax highlighting for most languages.</p>
+        </Section>
+
+        <Section title="Tables">
+          <Code>{`| Header | Header |\n|--------|--------|\n| Cell   | Cell   |\n| Cell   | Cell   |`}</Code>
+        </Section>
+
+        <Section title="Blockquotes">
+          <Code>{`> This is a blockquote\n> with multiple lines`}</Code>
+        </Section>
+
+        <Section title="Horizontal Rule">
+          <Code>---</Code>
+        </Section>
+
+        <Section title="Task Lists">
+          <Code>{`- [ ] Unchecked\n- [x] Checked`}</Code>
+        </Section>
+
+        <Section title="Callouts">
+          <p className="text-xs text-neutral-500 mb-2">
+            Obsidian-style callouts using blockquote syntax. Supported types:
+          </p>
+          <Code>{`> [!info] Title\n> Callout body text here.\n\n> [!warning] Be careful\n> This is a warning callout.\n\n> [!tip]\n> Title is optional.`}</Code>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {["info", "tip", "warning", "danger", "caution", "note", "abstract", "summary", "success", "question", "failure", "bug", "example", "quote"].map((type) => (
+              <span key={type} className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-800 font-mono">
+                {type}
+              </span>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Mermaid Diagrams">
+          <Code>{`\`\`\`mermaid\ngraph LR\n  A --> B --> C\n\`\`\``}</Code>
+          <p className="text-xs text-neutral-500 mt-1">Renders flowcharts, sequence diagrams, and more.</p>
+        </Section>
+
+        <Section title="Math (LaTeX)">
+          <Code>{`Inline: $E = mc^2$\n\nBlock:\n$$\n\\sum_{i=1}^{n} x_i\n$$`}</Code>
+        </Section>
+      </div>
+    </Modal>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 mb-2">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function Row({ syntax, result }: { syntax: string; result: string }) {
+  return (
+    <div className="flex items-center gap-3 py-0.5">
+      <code className="text-xs font-mono bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded">{syntax}</code>
+      <span className="text-xs text-neutral-500">&rarr;</span>
+      <span className="text-xs">{result}</span>
+    </div>
+  );
+}
+
+function Code({ children }: { children: string }) {
+  return (
+    <pre className="text-xs font-mono bg-neutral-100 dark:bg-neutral-800 rounded-lg p-3 overflow-x-auto whitespace-pre">{children}</pre>
   );
 }
 
@@ -233,7 +339,7 @@ const LANGUAGES = [
   { value: "c", label: "C" }, { value: "cpp", label: "C++" },
   { value: "csharp", label: "C#" }, { value: "ruby", label: "Ruby" },
   { value: "php", label: "PHP" }, { value: "swift", label: "Swift" },
-  { value: "kotlin", label: "Kotlin" }, { value: "sql", label: "SQL" },
+  { value: "kotlin", label: "Kotlin" }, { value: "elixir", label: "Elixir" }, { value: "sql", label: "SQL" },
   { value: "html", label: "HTML" }, { value: "css", label: "CSS" },
   { value: "json", label: "JSON" }, { value: "yaml", label: "YAML" },
   { value: "toml", label: "TOML" }, { value: "bash", label: "Bash" },

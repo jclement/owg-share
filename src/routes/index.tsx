@@ -170,7 +170,9 @@ function DashboardContent() {
                   <div className="text-xs text-neutral-500 hidden sm:block">
                     {new Date(share.created_at).toLocaleDateString()}
                   </div>
-                  <div className="text-sm text-neutral-600 dark:text-neutral-400 hidden sm:block">{share.hits}</div>
+                  <div className={`text-sm hidden sm:block ${share.max_hits && share.hits >= share.max_hits ? "text-red-500 dark:text-red-400" : "text-neutral-600 dark:text-neutral-400"}`}>
+                    {share.max_hits ? `${share.hits}/${share.max_hits}` : share.hits}
+                  </div>
                   <div className="flex gap-0.5 justify-end">
                     <button onClick={() => setEditingShareId(share.id)} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" title="Edit">
                       <Pencil size={15} />

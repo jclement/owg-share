@@ -16,12 +16,15 @@ import { go } from "@codemirror/lang-go";
 import { java } from "@codemirror/lang-java";
 import { cpp } from "@codemirror/lang-cpp";
 import { php } from "@codemirror/lang-php";
+import { StreamLanguage } from "@codemirror/language";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
 
 function getLanguageExtension(lang: string) {
   const map: Record<string, () => ReturnType<typeof markdown>> = {
     markdown, javascript, typescript: () => javascript({ typescript: true }),
     jsx: () => javascript({ jsx: true }), tsx: () => javascript({ jsx: true, typescript: true }),
     python, html, css, json, sql, xml, rust, go, java, c: cpp, cpp, csharp: cpp, php,
+    elixir: () => StreamLanguage.define(ruby),
   };
   return map[lang]?.() ?? null;
 }

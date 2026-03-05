@@ -40,7 +40,7 @@ publicRoutes.get("/data/:slug", async (c) => {
     ).bind(share.id).first<{ url: string }>();
     return json({
       id: share.id, slug: share.slug, type: share.type, title: share.title,
-      encrypted: !!share.encrypted, hits: share.hits + 1, created_at: share.created_at,
+      encrypted: !!share.encrypted, hits: share.hits + 1, max_hits: share.max_hits, created_at: share.created_at,
       link: linkData,
     });
   }
@@ -48,7 +48,7 @@ publicRoutes.get("/data/:slug", async (c) => {
   const typeData = await getShareTypeData(c.env.DB, share);
   return json({
     id: share.id, slug: share.slug, type: share.type, title: share.title,
-    encrypted: !!share.encrypted, hits: share.hits + 1, created_at: share.created_at,
+    encrypted: !!share.encrypted, hits: share.hits + 1, max_hits: share.max_hits, created_at: share.created_at,
     ...typeData,
   });
 });
