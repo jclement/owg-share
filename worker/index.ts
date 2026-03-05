@@ -6,7 +6,7 @@ import upload from "./routes/upload";
 import publicRoutes from "./routes/public";
 import passkeys from "./routes/passkeys";
 import apikeys from "./routes/apikeys";
-import v1 from "./routes/v1";
+
 
 type AppEnv = { Bindings: Env };
 
@@ -26,8 +26,6 @@ app.route("/api/shares", shares);
 app.route("/api/upload", upload);
 app.route("/api/passkeys", passkeys);
 app.route("/api/apikeys", apikeys);
-app.route("/api/v1", v1);
-
 // Public share routes
 app.route("/s", publicRoutes);
 
