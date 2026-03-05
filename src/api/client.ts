@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
+export async function handleResponse<T>(res: Response): Promise<T> {
   const body = await res.json();
   if (!res.ok || !body.success) {
     throw new ApiError(

@@ -13,6 +13,7 @@ import {
   Download, Copy, Check, Lock, Eye, Calendar,
   File, ChevronLeft, ChevronRight, X, FileCode
 } from "lucide-react";
+import { formatBytes, escapeHtml, inferLanguage } from "../../lib/format";
 
 export const Route = createFileRoute("/s/$slug")({
   component: PublicViewPage,
@@ -678,28 +679,3 @@ function GalleryRenderer({ slug, images, encrypted, cryptoKey }: { slug: string;
   );
 }
 
-// Helpers
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function inferLanguage(filename: string): string | null {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx",
-    py: "python", rs: "rust", go: "go", java: "java",
-    c: "c", cpp: "cpp", cs: "csharp", rb: "ruby",
-    php: "php", swift: "swift", kt: "kotlin", sql: "sql",
-    html: "html", css: "css", json: "json", yaml: "yaml", yml: "yaml",
-    toml: "toml", md: "markdown", sh: "bash", bash: "bash",
-    dockerfile: "dockerfile", xml: "xml", lua: "lua", zig: "zig",
-  };
-  return ext ? map[ext] || null : null;
-}
