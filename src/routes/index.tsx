@@ -2,15 +2,15 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuthStatus, useShares, useShareStats, useDeleteShare } from "../api/hooks";
 import { Spinner } from "../components/ui/Spinner";
-import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { NewShareWizard } from "../components/NewShareWizard";
+import { EditShareModal } from "../components/EditShareModal";
 import { useToast } from "../components/ui/Toast";
 import {
   Link as LinkIcon, FileText, Code, Upload, Images,
-  Eye, Plus, BarChart3, Copy, ExternalLink, Trash2, Search,
+  Eye, Plus, BarChart3, Copy, ExternalLink, Trash2, Search, Pencil, Lock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -37,6 +37,7 @@ function Dashboard() {
 
 function DashboardContent() {
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [editingShareId, setEditingShareId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -135,9 +136,11 @@ function DashboardContent() {
       ) : shares?.data && shares.data.length > 0 ? (
         <>
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
-            <div className="hidden sm:grid grid-cols-[2rem_1fr_6rem_5rem_7rem] gap-4 px-4 py-2.5 text-xs font-medium text-neutral-500 border-b border-neutral-200 dark:border-neutral-800">
+            <div className="hidden sm:grid grid-cols-[2rem_2rem_1fr_1fr_6rem_5rem_8.5rem] gap-4 px-4 py-2.5 text-xs font-medium text-neutral-500 border-b border-neutral-200 dark:border-neutral-800">
+              <div></div>
               <div></div>
               <div>Title / Slug</div>
+              <div>Notes</div>
               <div>Created</div>
               <div>Views</div>
               <div className="text-right">Actions</div>
@@ -147,23 +150,31 @@ function DashboardContent() {
               return (
                 <div
                   key={share.id}
-                  className="grid grid-cols-1 sm:grid-cols-[2rem_1fr_6rem_5rem_7rem] gap-2 sm:gap-4 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors items-center"
+                  className="grid grid-cols-1 sm:grid-cols-[2rem_2rem_1fr_1fr_6rem_5rem_8.5rem] gap-2 sm:gap-4 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors items-center"
                 >
                   <Icon size={16} className={`${typeColors[share.type]} hidden sm:block`} />
+                  <div className="hidden sm:flex items-center justify-center">
+                    {!!share.encrypted && <Lock size={14} className="text-yellow-500 dark:text-yellow-400" />}
+                  </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <Icon size={14} className={`${typeColors[share.type]} sm:hidden`} />
                       <span className="font-medium text-neutral-800 dark:text-neutral-200 truncate">{share.title || share.slug}</span>
-                      {!!share.encrypted && <Badge variant="warning">E2E</Badge>}
+                      {!!share.encrypted && <Lock size={12} className="text-yellow-500 sm:hidden" />}
                     </div>
                     <div className="text-xs text-neutral-500 font-mono truncate">/s/{share.slug}</div>
-                      {share.comment && <div className="text-xs text-neutral-400 dark:text-neutral-600 truncate italic">{share.comment}</div>}
+                  </div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate hidden sm:block">
+                    {share.comment || <span className="text-neutral-300 dark:text-neutral-700">&mdash;</span>}
                   </div>
                   <div className="text-xs text-neutral-500 hidden sm:block">
                     {new Date(share.created_at).toLocaleDateString()}
                   </div>
                   <div className="text-sm text-neutral-600 dark:text-neutral-400 hidden sm:block">{share.hits}</div>
                   <div className="flex gap-0.5 justify-end">
+                    <button onClick={() => setEditingShareId(share.id)} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" title="Edit">
+                      <Pencil size={15} />
+                    </button>
                     <button onClick={() => copyUrl(share.slug, !!share.encrypted)} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" title="Copy URL">
                       <Copy size={15} />
                     </button>
@@ -217,6 +228,7 @@ function DashboardContent() {
       )}
 
       <NewShareWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <EditShareModal open={!!editingShareId} onClose={() => setEditingShareId(null)} shareId={editingShareId} />
     </div>
   );
 }

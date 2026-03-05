@@ -6,6 +6,7 @@ import { Lock } from "lucide-react";
 interface ShareFormFieldsProps {
   showEncrypt?: boolean;
   showSlugType?: boolean;
+  currentExpiresAt?: string | null;
   encrypted: boolean;
   setEncrypted: (v: boolean) => void;
   slugType: string;
@@ -26,6 +27,7 @@ interface ShareFormFieldsProps {
 export function ShareFormFields({
   showEncrypt = true,
   showSlugType = true,
+  currentExpiresAt,
   encrypted,
   setEncrypted,
   slugType,
@@ -72,19 +74,30 @@ export function ShareFormFields({
       )}
 
       <div className="grid grid-cols-2 gap-4">
-        <Select
-          label="Expires"
-          value={expiresAt}
-          onChange={(e) => setExpiresAt(e.target.value)}
-          options={[
-            { value: "", label: "Indefinite" },
-            { value: "1d", label: "1 day" },
-            { value: "5d", label: "5 days" },
-            { value: "10d", label: "10 days" },
-            { value: "30d", label: "30 days" },
-            { value: "60d", label: "60 days" },
-          ]}
-        />
+        <div>
+          <Select
+            label="Expires"
+            value={expiresAt}
+            onChange={(e) => setExpiresAt(e.target.value)}
+            options={[
+              { value: "", label: currentExpiresAt === undefined ? "Indefinite" : "No change" },
+              { value: "1d", label: "1 day" },
+              { value: "5d", label: "5 days" },
+              { value: "10d", label: "10 days" },
+              { value: "30d", label: "30 days" },
+              { value: "60d", label: "60 days" },
+              ...(currentExpiresAt !== undefined ? [{ value: "never", label: "Remove expiry" }] : []),
+            ]}
+          />
+          {currentExpiresAt && (
+            <p className="text-xs text-neutral-500 mt-1">
+              Currently expires: {new Date(currentExpiresAt).toLocaleDateString()}
+            </p>
+          )}
+          {currentExpiresAt === null && (
+            <p className="text-xs text-neutral-500 mt-1">Currently: no expiry</p>
+          )}
+        </div>
         <Input
           label="Max views"
           type="number"
@@ -121,8 +134,9 @@ export function ShareFormFields({
   );
 }
 
-export function computeExpiresAt(value: string): string | undefined {
+export function computeExpiresAt(value: string): string | null | undefined {
   if (!value) return undefined;
+  if (value === "never") return null;
   const DAY = 24 * 60 * 60 * 1000;
   const ms: Record<string, number> = {
     "1d": DAY,

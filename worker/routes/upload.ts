@@ -9,7 +9,7 @@ const upload = new Hono<UploadApp>();
 
 upload.use("/*", requireAuth);
 
-// Direct upload to R2 (for files under ~100MB)
+// Direct upload to R2 (for files under ~1GB)
 upload.post("/presign", async (c) => {
   const userId = c.get("userId");
   const body = await c.req.json<{
@@ -22,8 +22,8 @@ upload.post("/presign", async (c) => {
     return error("Filename and content type are required", "VALIDATION_ERROR");
   }
 
-  if (body.size > 100 * 1024 * 1024) {
-    return error("File too large. Use multipart upload for files over 100MB.", "FILE_TOO_LARGE", 413);
+  if (body.size > 1024 * 1024 * 1024) {
+    return error("File too large (max 1GB).", "FILE_TOO_LARGE", 413);
   }
 
   const r2Key = `${userId}/${crypto.randomUUID()}/${body.filename}`;
@@ -54,7 +54,10 @@ upload.put("/file/:uploadId", async (c) => {
     return error("Unauthorized upload", "UNAUTHORIZED", 403);
   }
 
-  const body = await c.req.raw.arrayBuffer();
+  const body = c.req.raw.body;
+  if (!body) {
+    return error("No request body", "VALIDATION_ERROR");
+  }
 
   await c.env.R2.put(r2Key, body, {
     httpMetadata: { contentType },
@@ -62,7 +65,8 @@ upload.put("/file/:uploadId", async (c) => {
 
   await c.env.KV.delete(`upload:${uploadId}`);
 
-  return json({ r2Key, size: body.byteLength });
+  const { size } = JSON.parse(uploadData);
+  return json({ r2Key, size });
 });
 
 // Multipart upload - init

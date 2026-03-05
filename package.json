@@ -40,7 +40,7 @@
     "hono": "^4.7.4",
     "lucide-react": "^0.474.0",
     "marked": "^15.0.6",
-    "mermaid": "^11.4.1",
+    "mermaid": "^11.12.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "shiki": "^3.1.0"

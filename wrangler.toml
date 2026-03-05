@@ -11,20 +11,28 @@ run_worker_first = ["/api/*", "/s/*"]
 [vars]
 ENVIRONMENT = "production"
 APP_NAME = "OWG Share"
+RP_ID = "share.owg.me"
+RP_ORIGIN = "https://share.owg.me"
 
 # Relational data (users, passkeys, shares)
 [[d1_databases]]
 binding = "DB"
 database_name = "owg-share-db"
+database_id = "abc2411e-4b4a-44ba-a339-e6f7351b7f57"
 
 # Sessions, challenges, rate limiting
 [[kv_namespaces]]
 binding = "KV"
+id = "7fe5f7518f8a4894bfa6f4a4b9ba3ff6"
 
 # File storage (uploads, gallery images)
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "owg-share-storage"
+
+[[routes]]
+pattern = "share.owg.me"
+custom_domain = true
 
 [triggers]
 crons = ["0 3 * * *"]

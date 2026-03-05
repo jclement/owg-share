@@ -22,6 +22,15 @@ export interface Share {
   updated_at: string;
 }
 
+export interface ShareDetail extends Share {
+  link?: { url: string };
+  markdown?: { content: string };
+  code?: { content: string; language: string | null; filename: string | null };
+  file?: { filename: string; content_type: string; size: number; r2_key: string };
+  gallery?: { id: string };
+  images?: Array<{ id: string; filename: string; content_type: string; size: number; r2_key: string; sort_order: number; caption: string | null }>;
+}
+
 export interface ShareStats {
   total: number;
   totalHits: number;
@@ -87,10 +96,10 @@ export function useShares(params?: { type?: string; page?: number; perPage?: num
   });
 }
 
-export function useShare(id: string) {
+export function useShare(id: string | null) {
   return useQuery({
-    queryKey: ["shares", id],
-    queryFn: () => api.get<Share & Record<string, unknown>>(`/api/shares/${id}`),
+    queryKey: ["shares", "detail", id],
+    queryFn: () => api.get<ShareDetail>(`/api/shares/${id}`),
     enabled: !!id,
   });
 }
@@ -115,7 +124,7 @@ export function useDeleteShare() {
 export function useCreateLink() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { url: string; title?: string; comment?: string; slug_type?: string; custom_slug?: string; expires_at?: string; max_hits?: number }) =>
+    mutationFn: (data: { url: string; title?: string; comment?: string; slug_type?: string; custom_slug?: string; expires_at?: string | null; max_hits?: number }) =>
       api.post<{ id: string; slug: string }>("/api/shares/links", data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
   });
@@ -124,7 +133,7 @@ export function useCreateLink() {
 export function useCreateMarkdown() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { content: string; title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string; max_hits?: number }) =>
+    mutationFn: (data: { content: string; title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string | null; max_hits?: number }) =>
       api.post<{ id: string; slug: string; encrypted: boolean }>("/api/shares/markdown", data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
   });
@@ -133,7 +142,7 @@ export function useCreateMarkdown() {
 export function useCreateCode() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { content: string; language?: string; filename?: string; title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string; max_hits?: number }) =>
+    mutationFn: (data: { content: string; language?: string; filename?: string; title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string | null; max_hits?: number }) =>
       api.post<{ id: string; slug: string; encrypted: boolean }>("/api/shares/code", data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
   });
@@ -142,7 +151,7 @@ export function useCreateCode() {
 export function useCreateFile() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { filename: string; content_type: string; size: number; r2_key: string; title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string; max_hits?: number }) =>
+    mutationFn: (data: { filename: string; content_type: string; size: number; r2_key: string; title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string | null; max_hits?: number }) =>
       api.post<{ id: string; slug: string; encrypted: boolean }>("/api/shares/files", data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
   });
@@ -151,8 +160,81 @@ export function useCreateFile() {
 export function useCreateGallery() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string; max_hits?: number; images?: Array<{ filename: string; content_type: string; size: number; r2_key: string; caption?: string }> }) =>
+    mutationFn: (data: { title?: string; comment?: string; encrypted?: boolean; slug_type?: string; custom_slug?: string; expires_at?: string | null; max_hits?: number; images?: Array<{ filename: string; content_type: string; size: number; r2_key: string; caption?: string }> }) =>
       api.post<{ id: string; galleryId: string; slug: string; encrypted: boolean }>("/api/shares/galleries", data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+// Update hooks
+export function useUpdateLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; url?: string; title?: string | null; comment?: string | null; expires_at?: string | null; max_hits?: number | null }) =>
+      api.put(`/api/shares/links/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useUpdateMarkdown() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; title?: string | null; comment?: string | null; expires_at?: string | null; max_hits?: number | null }) =>
+      api.put(`/api/shares/markdown/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useUpdateCode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; language?: string; filename?: string; title?: string | null; comment?: string | null; expires_at?: string | null; max_hits?: number | null }) =>
+      api.put(`/api/shares/code/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useUpdateFile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; title?: string | null; comment?: string | null; expires_at?: string | null; max_hits?: number | null }) =>
+      api.put(`/api/shares/files/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useUpdateGallery() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; title?: string | null; comment?: string | null; expires_at?: string | null; max_hits?: number | null }) =>
+      api.put(`/api/shares/galleries/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useDeleteGalleryImage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ shareId, imageId }: { shareId: string; imageId: string }) =>
+      api.delete(`/api/shares/galleries/${shareId}/images/${imageId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useAddGalleryImages() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ shareId, images }: { shareId: string; images: Array<{ filename: string; content_type: string; size: number; r2_key: string; caption?: string }> }) =>
+      api.post(`/api/shares/galleries/${shareId}/images`, { images }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
+  });
+}
+
+export function useUpdateGalleryImage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ shareId, imageId, caption }: { shareId: string; imageId: string; caption: string }) =>
+      api.put(`/api/shares/galleries/${shareId}/images/${imageId}`, { caption }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shares"] }),
   });
 }

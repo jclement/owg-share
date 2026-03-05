@@ -7,6 +7,7 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   size?: "default" | "wide" | "full";
+  dismissOnEscape?: boolean;
 }
 
 const sizeClasses = {
@@ -15,15 +16,15 @@ const sizeClasses = {
   full: "max-w-5xl",
 };
 
-export function Modal({ open, onClose, title, children, size = "default" }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = "default", dismissOnEscape = true }: ModalProps) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || !dismissOnEscape) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, dismissOnEscape]);
 
   if (!open) return null;
 

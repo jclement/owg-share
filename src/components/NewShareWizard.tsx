@@ -323,7 +323,7 @@ function FileForm({ onResult }: { onResult: (r: { slug: string; encrypted: boole
 
   const handleSubmit = async () => {
     if (!file) { toast("error", "Select a file"); return; }
-    if (file.size > 100 * 1024 * 1024) { toast("error", "File too large (max 100MB)"); return; }
+    if (file.size > 1024 * 1024 * 1024) { toast("error", "File too large (max 1GB)"); return; }
 
     setUploading(true);
     setProgress(0);
@@ -394,7 +394,7 @@ function FileForm({ onResult }: { onResult: (r: { slug: string; encrypted: boole
         ) : (
           <div>
             <div className="text-neutral-600 dark:text-neutral-300 text-sm">Drop a file here or click to browse</div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-600 mt-1">Max 100MB</div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-600 mt-1">Max 1GB</div>
           </div>
         )}
       </div>
