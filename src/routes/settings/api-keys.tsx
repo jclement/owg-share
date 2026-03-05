@@ -6,7 +6,7 @@ import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { Spinner } from "../../components/ui/Spinner";
 import { useToast } from "../../components/ui/Toast";
-import { Key, Plus, Trash2, Copy, Check } from "lucide-react";
+import { Key, Plus, Trash2, Copy, Check, Download } from "lucide-react";
 
 export const Route = createFileRoute("/settings/api-keys")({
   component: ApiKeysPage,
@@ -183,7 +183,10 @@ curl -X POST $BASE_URL/api/shares/files \\
                 {copiedKey ? <Check size={16} /> : <Copy size={16} />}
               </Button>
             </div>
-            <Button onClick={() => { setShowCreate(false); setNewKeyResult(null); }} className="w-full" variant="secondary">
+            <Button onClick={() => downloadShareScript(newKeyResult.key)} variant="secondary" className="w-full">
+              <Download size={16} /> Download share.sh
+            </Button>
+            <Button onClick={() => { setShowCreate(false); setNewKeyResult(null); }} className="w-full" variant="ghost">
               Done
             </Button>
           </div>
@@ -196,6 +199,426 @@ curl -X POST $BASE_URL/api/shares/files \\
       </Modal>
     </div>
   );
+}
+
+function downloadShareScript(apiKey: string) {
+  const baseUrl = window.location.origin;
+  const script = generateShareScript(apiKey, baseUrl);
+  const blob = new Blob([script], { type: "application/x-shellscript" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "share.sh";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function generateShareScript(apiKey: string, baseUrl: string): string {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+API_KEY="${apiKey}"
+BASE_URL="${baseUrl}"
+
+# ── Colors ──────────────────────────────────────────────────────────────────
+if [ -t 1 ]; then
+  BOLD=$'\\e[1m' DIM=$'\\e[2m' RESET=$'\\e[0m'
+  GREEN=$'\\e[32m' CYAN=$'\\e[36m' RED=$'\\e[31m' YELLOW=$'\\e[33m'
+else
+  BOLD="" DIM="" RESET="" GREEN="" CYAN="" RED="" YELLOW=""
+fi
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+die() { printf "%s%serror:%s %s\\n" "" "\${RED}" "\${RESET}" "$1" >&2; exit 1; }
+
+check_deps() {
+  command -v curl >/dev/null 2>&1 || die "curl is required but not installed"
+  command -v jq   >/dev/null 2>&1 || die "jq is required but not installed (brew install jq)"
+}
+
+api_post() {
+  local path="$1" data="$2"
+  local resp
+  resp=$(curl -sf -X POST "\${BASE_URL}\${path}" \\
+    -H "Authorization: Bearer \${API_KEY}" \\
+    -H "Content-Type: application/json" \\
+    -d "$data" 2>/dev/null) || die "API request failed: POST \${path}"
+  local ok
+  ok=$(echo "$resp" | jq -r '.success // false')
+  if [ "$ok" != "true" ]; then
+    local msg
+    msg=$(echo "$resp" | jq -r '.error.message // "Unknown error"')
+    die "$msg"
+  fi
+  echo "$resp" | jq -r '.data'
+}
+
+api_put_file() {
+  local path="$1" file="$2"
+  local resp
+  resp=$(curl -sf -X PUT "\${BASE_URL}\${path}" \\
+    -H "Authorization: Bearer \${API_KEY}" \\
+    --data-binary "@\${file}" 2>/dev/null) || die "File upload failed"
+  echo "$resp"
+}
+
+api_put_chunk() {
+  local path="$1"
+  local resp
+  resp=$(curl -sf -X PUT "\${BASE_URL}\${path}" \\
+    -H "Authorization: Bearer \${API_KEY}" \\
+    --data-binary @- 2>/dev/null) || die "Chunk upload failed"
+  echo "$resp"
+}
+
+human_size() {
+  local bytes="$1"
+  if [ "$bytes" -ge 1073741824 ]; then
+    printf "%.1f GB" "$(echo "$bytes / 1073741824" | bc -l)"
+  elif [ "$bytes" -ge 1048576 ]; then
+    printf "%.1f MB" "$(echo "$bytes / 1048576" | bc -l)"
+  elif [ "$bytes" -ge 1024 ]; then
+    printf "%.1f KB" "$(echo "$bytes / 1024" | bc -l)"
+  else
+    printf "%d B" "$bytes"
+  fi
+}
+
+progress_bar() {
+  local current="$1" total="$2" filename="$3"
+  local width=30
+  local pct=$((current * 100 / total))
+  local filled=$((current * width / total))
+  local empty=$((width - filled))
+  local bar=""
+  local i=0
+  while [ "$i" -lt "$filled" ]; do bar+="█"; i=$((i + 1)); done
+  i=0
+  while [ "$i" -lt "$empty" ]; do bar+="░"; i=$((i + 1)); done
+  printf "  %s%s%s %s[%s]%s %s / %s  %s(%d%%)%s\\r" \\
+    "\${BOLD}" "$filename" "\${RESET}" \\
+    "\${CYAN}" "$bar" "\${RESET}" \\
+    "$(human_size "$current")" "$(human_size "$total")" \\
+    "\${DIM}" "$pct" "\${RESET}" >&2
+}
+
+detect_mime() {
+  local f="$1"
+  if command -v file >/dev/null 2>&1; then
+    file -b --mime-type "$f" 2>/dev/null || echo "application/octet-stream"
+  else
+    echo "application/octet-stream"
+  fi
+}
+
+output_url() {
+  local slug="$1" share_type="$2" title="\${3:-}"
+  local url="\${BASE_URL}/s/\${slug}"
+  if [ -t 1 ]; then
+    echo ""
+    printf "  \${GREEN}\${BOLD}✓\${RESET} \${BOLD}%s\${RESET} shared" "$share_type"
+    [ -n "$title" ] && printf " — \${CYAN}%s\${RESET}" "$title"
+    echo ""
+    printf "  \${DIM}→\${RESET} \${BOLD}%s\${RESET}\\n\\n" "$url"
+  else
+    printf "%s\\n" "$url"
+  fi
+}
+
+read_content() {
+  local file="\${1:-}"
+  if [ -n "$file" ]; then
+    [ -f "$file" ] || die "File not found: $file"
+    cat "$file"
+  elif [ ! -t 0 ]; then
+    cat
+  else
+    die "No content provided. Use -f <file> or pipe from stdin."
+  fi
+}
+
+# ── Shared option parsing ───────────────────────────────────────────────────
+parse_common_opts() {
+  TITLE="" COMMENT="" EXPIRES="" MAX_HITS=""
+  while [ \$# -gt 0 ]; do
+    case "$1" in
+      -t|--title)   TITLE="$2";    shift 2 ;;
+      -c|--comment) COMMENT="$2";  shift 2 ;;
+      -e|--expires) EXPIRES="$2";  shift 2 ;;
+      -m|--max-hits) MAX_HITS="$2"; shift 2 ;;
+      *)            EXTRA_ARGS+=("$1"); shift ;;
+    esac
+  done
+}
+
+json_common() {
+  local parts=""
+  [ -n "$TITLE" ]    && parts+=", \\"title\\": $(printf '%s' "$TITLE" | jq -Rs .)"
+  [ -n "$COMMENT" ]  && parts+=", \\"comment\\": $(printf '%s' "$COMMENT" | jq -Rs .)"
+  [ -n "$EXPIRES" ]  && parts+=", \\"expires_at\\": \\"$EXPIRES\\""
+  [ -n "$MAX_HITS" ] && parts+=", \\"max_hits\\": $MAX_HITS"
+  echo "$parts"
+}
+
+# ── Commands ────────────────────────────────────────────────────────────────
+cmd_link() {
+  EXTRA_ARGS=()
+  parse_common_opts "$@"
+  [ "\${#EXTRA_ARGS[@]}" -eq 0 ] && die "Usage: share link <url> [-t title] [-c comment]"
+
+  local url="\${EXTRA_ARGS[0]}"
+  local common
+  common=$(json_common)
+  local payload="{\\"url\\": $(printf '%s' "$url" | jq -Rs .)$common}"
+
+  local result
+  result=$(api_post "/api/shares/links" "$payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  output_url "$slug" "Link" "$TITLE"
+}
+
+cmd_markdown() {
+  EXTRA_ARGS=()
+  parse_common_opts "$@"
+
+  local filepath="\${EXTRA_ARGS[0]:-}"
+  local content
+  if [ -n "$filepath" ]; then
+    [ -f "$filepath" ] || die "File not found: $filepath"
+    content=$(cat "$filepath")
+  elif [ ! -t 0 ]; then
+    content=$(cat)
+  else
+    die "Usage: share markdown <file> [-t title]\\n       cat doc.md | share markdown"
+  fi
+
+  local common
+  common=$(json_common)
+  local payload="{\\"content\\": $(printf '%s' "$content" | jq -Rs .)$common}"
+
+  local result
+  result=$(api_post "/api/shares/markdown" "$payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  output_url "$slug" "Markdown" "\${TITLE:-\${filepath:+$(basename "$filepath")}}"
+}
+
+cmd_code() {
+  local LANGUAGE=""
+  EXTRA_ARGS=()
+  local args=()
+  while [ \$# -gt 0 ]; do
+    case "$1" in
+      -l|--language) LANGUAGE="$2"; shift 2 ;;
+      *)             args+=("$1");  shift ;;
+    esac
+  done
+  parse_common_opts "\${args[@]+\${args[@]}}"
+
+  local filepath="\${EXTRA_ARGS[0]:-}"
+  local content
+  if [ -n "$filepath" ]; then
+    [ -f "$filepath" ] || die "File not found: $filepath"
+    content=$(cat "$filepath")
+  elif [ ! -t 0 ]; then
+    content=$(cat)
+  else
+    die "Usage: share code <file> [-l language] [-t title]\\n       echo 'code' | share code -l python"
+  fi
+
+  local common
+  common=$(json_common)
+  local extra=""
+  [ -n "$LANGUAGE" ]  && extra+=", \\"language\\": \\"$LANGUAGE\\""
+  [ -n "$filepath" ]  && extra+=", \\"filename\\": $(printf '%s' "$(basename "$filepath")" | jq -Rs .)"
+  local payload="{\\"content\\": $(printf '%s' "$content" | jq -Rs .)$extra$common}"
+
+  local result
+  result=$(api_post "/api/shares/code" "$payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  output_url "$slug" "Code" "\${TITLE:-\${filepath:+$(basename "$filepath")}}"
+}
+
+CHUNK_SIZE=$((10 * 1024 * 1024))  # 10 MB per chunk
+MULTIPART_THRESHOLD=$((95 * 1024 * 1024))  # Use multipart above 95 MB
+
+upload_simple() {
+  local filepath="$1" upload_id="$2"
+  api_put_file "/api/upload/file/\${upload_id}" "$filepath" >/dev/null
+}
+
+upload_multipart() {
+  local filepath="$1" filename="$2" mime="$3" size="$4"
+
+  # Init multipart
+  local init_payload="{\\"filename\\": $(printf '%s' "$filename" | jq -Rs .), \\"contentType\\": \\"$mime\\"}"
+  local init
+  init=$(api_post "/api/upload/presign-multipart" "$init_payload")
+  local upload_id r2_key
+  upload_id=$(echo "$init" | jq -r '.uploadId')
+  r2_key=$(echo "$init" | jq -r '.r2_key // .r2Key')
+
+  # Upload chunks
+  local part_num=0 uploaded=0
+  local parts="["
+  local total_chunks=$(( (size + CHUNK_SIZE - 1) / CHUNK_SIZE ))
+
+  [ -t 2 ] && progress_bar 0 "$size" "$filename"
+
+  while [ "$part_num" -lt "$total_chunks" ]; do
+    local part_resp
+    part_resp=$(dd if="$filepath" bs="$CHUNK_SIZE" skip="$part_num" count=1 2>/dev/null | api_put_chunk "/api/upload/multipart-part/\${upload_id}/$((part_num + 1))")
+    local ok
+    ok=$(echo "$part_resp" | jq -r '.success // false')
+    if [ "$ok" != "true" ]; then
+      [ -t 2 ] && echo >&2
+      die "Chunk upload failed (part $((part_num + 1)))"
+    fi
+    local etag
+    etag=$(echo "$part_resp" | jq -r '.data.etag')
+
+    [ "$part_num" -gt 0 ] && parts+=","
+    part_num=$((part_num + 1))
+    parts+="{\\"partNumber\\": $part_num, \\"etag\\": \\"$etag\\"}"
+
+    uploaded=$((part_num * CHUNK_SIZE))
+    [ "$uploaded" -gt "$size" ] && uploaded=$size
+    [ -t 2 ] && progress_bar "$uploaded" "$size" "$filename"
+  done
+  parts+="]"
+
+  if [ -t 2 ]; then
+    printf "\\r\\033[K" >&2
+  fi
+
+  # Complete multipart
+  local complete_payload="{\\"uploadId\\": \\"$upload_id\\", \\"r2Key\\": $(printf '%s' "$r2_key" | jq -Rs .), \\"parts\\": $parts}"
+  api_post "/api/upload/complete-multipart" "$complete_payload" >/dev/null
+
+  # Return r2_key for share creation
+  printf '%s' "$r2_key"
+}
+
+cmd_file() {
+  local FILENAME=""
+  EXTRA_ARGS=()
+  local args=()
+  while [ \$# -gt 0 ]; do
+    case "$1" in
+      -n|--name) FILENAME="$2"; shift 2 ;;
+      *)         args+=("$1");  shift ;;
+    esac
+  done
+  parse_common_opts "\${args[@]+\${args[@]}}"
+
+  local filepath="\${EXTRA_ARGS[0]:-}"
+  local tmpfile=""
+
+  if [ -n "$filepath" ]; then
+    [ -f "$filepath" ] || die "File not found: $filepath"
+    [ -z "$FILENAME" ] && FILENAME=$(basename "$filepath")
+  elif [ ! -t 0 ]; then
+    tmpfile=$(mktemp)
+    cat > "$tmpfile"
+    filepath="$tmpfile"
+    [ -z "$FILENAME" ] && FILENAME="stdin"
+  else
+    die "Usage: share file <path> [-t title]\\n       cat data | share file -n data.bin"
+  fi
+
+  local mime
+  mime=$(detect_mime "$filepath")
+  local size
+  size=$(wc -c < "$filepath" | tr -d ' ')
+
+  local r2_key
+
+  if [ "$size" -gt "$MULTIPART_THRESHOLD" ]; then
+    # Large file → multipart upload
+    r2_key=$(upload_multipart "$filepath" "$FILENAME" "$mime" "$size")
+  else
+    # Small file → single upload
+    local presign_payload="{\\"filename\\": $(printf '%s' "$FILENAME" | jq -Rs .), \\"contentType\\": \\"$mime\\", \\"size\\": $size}"
+    local presign
+    presign=$(api_post "/api/upload/presign" "$presign_payload")
+    local upload_id
+    upload_id=$(echo "$presign" | jq -r '.uploadId')
+    r2_key=$(echo "$presign" | jq -r '.r2_key // .r2Key')
+
+    [ -t 2 ] && printf "  %s%s%s %s(%s)%s uploading...\\r" "\${BOLD}" "$FILENAME" "\${RESET}" "\${DIM}" "$(human_size "$size")" "\${RESET}" >&2
+    upload_simple "$filepath" "$upload_id"
+  fi
+
+  if [ -t 2 ]; then
+    printf "\\r\\033[K" >&2
+  fi
+
+  # Create share
+  local common
+  common=$(json_common)
+  local share_payload="{\\"filename\\": $(printf '%s' "$FILENAME" | jq -Rs .), \\"content_type\\": \\"$mime\\", \\"size\\": $size, \\"r2_key\\": $(printf '%s' "$r2_key" | jq -Rs .)$common}"
+  local result
+  result=$(api_post "/api/shares/files" "$share_payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  [ -n "$tmpfile" ] && rm -f "$tmpfile"
+  output_url "$slug" "File" "\${TITLE:-$FILENAME}"
+}
+
+cmd_help() {
+  cat <<HELP
+\${BOLD}share\${RESET} — CLI for OWG Share (\${DIM}\${BASE_URL}\${RESET})
+
+\${BOLD}USAGE\${RESET}
+  share <command> [file] [options]
+
+\${BOLD}COMMANDS\${RESET}
+  \${GREEN}link\${RESET} <url>                Share a URL redirect
+  \${GREEN}markdown\${RESET} [file]           Share markdown (file or stdin)
+  \${GREEN}code\${RESET} [file] [-l lang]      Share code (file or stdin)
+  \${GREEN}file\${RESET} [path]                Upload and share a file (path or stdin)
+  \${GREEN}help\${RESET}                       Show this help
+
+\${BOLD}OPTIONS\${RESET}
+  -t, --title <title>     Set share title
+  -c, --comment <text>    Add internal comment
+  -e, --expires <iso>     Set expiration (ISO 8601 datetime)
+  -m, --max-hits <n>      Set maximum view count
+  -l, --language <lang>   Set language (code only)
+  -n, --name <filename>   Override filename (file only, useful with stdin)
+
+\${BOLD}EXAMPLES\${RESET}
+  share link https://example.com -t "Example"
+  share markdown README.md
+  share code main.py -l python
+  share file photo.jpg -t "Vacation photo"
+  echo "hello world" | share markdown
+  cat backup.tar.gz | share file -n backup.tar.gz
+  share link https://x.com/post | pbcopy   \${DIM}# outputs just the URL\${RESET}
+HELP
+}
+
+# ── Main ────────────────────────────────────────────────────────────────────
+check_deps
+
+cmd="\${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+  link)     cmd_link "$@" ;;
+  markdown|md) cmd_markdown "$@" ;;
+  code)     cmd_code "$@" ;;
+  file)     cmd_file "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *)        die "Unknown command: $cmd. Run 'share help' for usage." ;;
+esac
+`;
 }
 
 function CurlExample({ title, command }: { title: string; command: string }) {

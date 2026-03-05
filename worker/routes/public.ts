@@ -129,13 +129,17 @@ publicRoutes.get("/:slug/download", async (c) => {
 
   if (!fileData) return error("File data not found", "NOT_FOUND", 404);
 
-  const object = await c.env.R2.get(fileData.r2_key);
+  const filename = fileData.filename.trim();
+  const contentType = fileData.content_type.trim() || "application/octet-stream";
+  const r2Key = fileData.r2_key.trim();
+
+  const object = await c.env.R2.get(r2Key);
   if (!object) return error("File not found in storage", "NOT_FOUND", 404);
 
   return new Response(object.body, {
     headers: {
-      "Content-Type": fileData.content_type,
-      "Content-Disposition": `attachment; filename="${fileData.filename.replace(/["\\]/g, '_')}"`,
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${filename.replace(/["\\]/g, '_')}"`,
       "Cache-Control": "private, max-age=3600",
     },
   });
