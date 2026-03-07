@@ -1,8 +1,14 @@
 [tools]
+fnox = "latest"
 node = "22"
+
+[plugins]
+fnox-env = "https://github.com/jdx/mise-env-fnox"
 
 [env]
 _.path = ["{{config_root}}/node_modules/.bin"]
+_.fnox-env = { tools = true }
+
 
 [tasks.dev]
 description = "Start dev server with hot reload"

@@ -1,0 +1,9 @@
+default_provider = "1Password"
+
+[providers.1Password]
+type = "1password"
+account = "adipose.1password.com"
+
+[secrets]
+CLOUDFLARE_API_TOKEN={provider = "1Password", value="op://private/Cloudflare/CLOUDFLARE_API_TOKEN"}
+CLOUDFLARE_ACCOUNT_ID={provider = "1Password", value="op://private/Cloudflare/CLOUDFLARE_ACCOUNT_ID"}
