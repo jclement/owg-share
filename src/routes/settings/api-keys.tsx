@@ -366,126 +366,26 @@ parse_expiry() {
   esac
 }
 
-# ── Shared option parsing ───────────────────────────────────────────────────
-parse_common_opts() {
-  TITLE="" COMMENT="" EXPIRES="90d" MAX_HITS="" SLUG=""
-  while [ \$# -gt 0 ]; do
-    case "$1" in
-      -t|--title)    TITLE="$2";    shift 2 ;;
-      -c|--comment)  COMMENT="$2";  shift 2 ;;
-      -e|--expires)  EXPIRES="$2";  shift 2 ;;
-      -m|--max-hits) MAX_HITS="$2"; shift 2 ;;
-      -s|--slug)     SLUG="$2";     shift 2 ;;
-      *)             EXTRA_ARGS+=("$1"); shift ;;
-    esac
-  done
-}
-
 json_common() {
   local parts=""
-  [ -n "$TITLE" ]    && parts+=", \\"title\\": $(printf '%s' "$TITLE" | jq -Rs .)"
-  [ -n "$COMMENT" ]  && parts+=", \\"comment\\": $(printf '%s' "$COMMENT" | jq -Rs .)"
-  [ -n "$MAX_HITS" ] && parts+=", \\"max_hits\\": $MAX_HITS"
+  [ -n "\${OPT_TITLE:-}" ]    && parts+=", \\"title\\": $(printf '%s' "$OPT_TITLE" | jq -Rs .)"
+  [ -n "\${OPT_COMMENT:-}" ]  && parts+=", \\"comment\\": $(printf '%s' "$OPT_COMMENT" | jq -Rs .)"
+  [ -n "\${OPT_MAX_HITS:-}" ] && parts+=", \\"max_hits\\": $OPT_MAX_HITS"
 
-  # Custom slug
-  if [ -n "$SLUG" ]; then
-    parts+=", \\"slug_type\\": \\"custom\\", \\"custom_slug\\": $(printf '%s' "$SLUG" | jq -Rs .)"
+  if [ -n "\${OPT_SLUG:-}" ]; then
+    parts+=", \\"slug_type\\": \\"custom\\", \\"custom_slug\\": $(printf '%s' "$OPT_SLUG" | jq -Rs .)"
   fi
 
-  # Expiry (default 90d, -e never to disable)
   local iso_expiry
-  iso_expiry=$(parse_expiry "$EXPIRES")
+  iso_expiry=$(parse_expiry "\${OPT_EXPIRES:-90d}")
   [ -n "$iso_expiry" ] && parts+=", \\"expires_at\\": \\"$iso_expiry\\""
 
   echo "$parts"
 }
 
-# ── Commands ────────────────────────────────────────────────────────────────
-cmd_link() {
-  EXTRA_ARGS=()
-  parse_common_opts "$@"
-  [ "\${#EXTRA_ARGS[@]}" -eq 0 ] && die "Usage: share link <url> [-t title] [-c comment]"
-
-  local url="\${EXTRA_ARGS[0]}"
-  local common
-  common=$(json_common)
-  local payload="{\\"url\\": $(printf '%s' "$url" | jq -Rs .)$common}"
-
-  local result
-  result=$(api_post "/api/shares/links" "$payload")
-  local slug
-  slug=$(echo "$result" | jq -r '.slug')
-
-  output_url "$slug" "Link" "$TITLE"
-}
-
-cmd_markdown() {
-  EXTRA_ARGS=()
-  parse_common_opts "$@"
-
-  local filepath="\${EXTRA_ARGS[0]:-}"
-  local content
-  if [ -n "$filepath" ]; then
-    [ -f "$filepath" ] || die "File not found: $filepath"
-    content=$(cat "$filepath")
-  elif [ ! -t 0 ]; then
-    content=$(cat)
-  else
-    die "Usage: share markdown <file> [-t title]\\n       cat doc.md | share markdown"
-  fi
-
-  local common
-  common=$(json_common)
-  local payload="{\\"content\\": $(printf '%s' "$content" | jq -Rs .)$common}"
-
-  local result
-  result=$(api_post "/api/shares/markdown" "$payload")
-  local slug
-  slug=$(echo "$result" | jq -r '.slug')
-
-  output_url "$slug" "Markdown" "\${TITLE:-\${filepath:+$(basename "$filepath")}}"
-}
-
-cmd_code() {
-  local LANGUAGE=""
-  EXTRA_ARGS=()
-  local args=()
-  while [ \$# -gt 0 ]; do
-    case "$1" in
-      -l|--language) LANGUAGE="$2"; shift 2 ;;
-      *)             args+=("$1");  shift ;;
-    esac
-  done
-  parse_common_opts "\${args[@]+\${args[@]}}"
-
-  local filepath="\${EXTRA_ARGS[0]:-}"
-  local content
-  if [ -n "$filepath" ]; then
-    [ -f "$filepath" ] || die "File not found: $filepath"
-    content=$(cat "$filepath")
-  elif [ ! -t 0 ]; then
-    content=$(cat)
-  else
-    die "Usage: share code <file> [-l language] [-t title]\\n       echo 'code' | share code -l python"
-  fi
-
-  local common
-  common=$(json_common)
-  local extra=""
-  [ -n "$LANGUAGE" ]  && extra+=", \\"language\\": \\"$LANGUAGE\\""
-  [ -n "$filepath" ]  && extra+=", \\"filename\\": $(printf '%s' "$(basename "$filepath")" | jq -Rs .)"
-  local payload="{\\"content\\": $(printf '%s' "$content" | jq -Rs .)$extra$common}"
-
-  local result
-  result=$(api_post "/api/shares/code" "$payload")
-  local slug
-  slug=$(echo "$result" | jq -r '.slug')
-
-  output_url "$slug" "Code" "\${TITLE:-\${filepath:+$(basename "$filepath")}}"
-}
-
-CHUNK_SIZE=$((10 * 1024 * 1024))  # 10 MB per chunk
-MULTIPART_THRESHOLD=$((95 * 1024 * 1024))  # Use multipart above 95 MB
+# ── Upload helpers ─────────────────────────────────────────────────────────
+CHUNK_SIZE=$((10 * 1024 * 1024))
+MULTIPART_THRESHOLD=$((95 * 1024 * 1024))
 
 upload_simple() {
   local filepath="$1" upload_id="$2" size="\${3:-0}" filename="\${4:-}"
@@ -512,7 +412,6 @@ upload_simple() {
 upload_multipart() {
   local filepath="$1" filename="$2" mime="$3" size="$4"
 
-  # Init multipart
   local init_payload="{\\"filename\\": $(printf '%s' "$filename" | jq -Rs .), \\"contentType\\": \\"$mime\\"}"
   local init
   init=$(api_post "/api/upload/presign-multipart" "$init_payload")
@@ -520,7 +419,6 @@ upload_multipart() {
   upload_id=$(echo "$init" | jq -r '.uploadId')
   r2_key=$(echo "$init" | jq -r '.r2_key // .r2Key')
 
-  # Upload chunks
   local part_num=0 uploaded=0
   local parts="["
   local total_chunks=$(( (size + CHUNK_SIZE - 1) / CHUNK_SIZE ))
@@ -549,45 +447,33 @@ upload_multipart() {
   done
   parts+="]"
 
-  if [ -t 2 ]; then
-    printf "\\r\\033[K" >&2
-  fi
+  [ -t 2 ] && printf "\\r\\033[K" >&2
 
-  # Complete multipart
   local complete_payload="{\\"uploadId\\": \\"$upload_id\\", \\"r2Key\\": $(printf '%s' "$r2_key" | jq -Rs .), \\"parts\\": $parts}"
   api_post "/api/upload/complete-multipart" "$complete_payload" >/dev/null
 
-  # Return r2_key for share creation
   printf '%s' "$r2_key"
 }
 
-cmd_file() {
-  local FILENAME=""
-  EXTRA_ARGS=()
-  local args=()
-  while [ \$# -gt 0 ]; do
-    case "$1" in
-      -n|--name) FILENAME="$2"; shift 2 ;;
-      *)         args+=("$1");  shift ;;
-    esac
-  done
-  parse_common_opts "\${args[@]+\${args[@]}}"
-
-  local filepath="\${EXTRA_ARGS[0]:-}"
+# ── Mode: file (default) ──────────────────────────────────────────────────
+do_file() {
+  local filepath="\${1:-}"
   local tmpfile=""
 
   if [ -n "$filepath" ]; then
     [ -f "$filepath" ] || die "File not found: $filepath"
-    [ -z "$FILENAME" ] && FILENAME=$(basename "$filepath")
+    [ -z "\${OPT_NAME:-}" ] && OPT_NAME=$(basename "$filepath")
   elif [ ! -t 0 ]; then
     tmpfile=$(mktemp)
     cat > "$tmpfile"
     filepath="$tmpfile"
-    [ -z "$FILENAME" ] && FILENAME="stdin"
+    [ -z "\${OPT_NAME:-}" ] && OPT_NAME="stdin"
   else
-    die "Usage: share file <path> [-t title]\\n       cat data | share file -n data.bin"
+    show_help
+    exit 0
   fi
 
+  local filename="\${OPT_NAME}"
   local mime
   mime=$(detect_mime "$filepath")
   local size
@@ -596,61 +482,120 @@ cmd_file() {
   local r2_key
 
   if [ "$size" -gt "$MULTIPART_THRESHOLD" ]; then
-    # Large file → multipart upload
-    r2_key=$(upload_multipart "$filepath" "$FILENAME" "$mime" "$size")
+    r2_key=$(upload_multipart "$filepath" "$filename" "$mime" "$size")
   else
-    # Small file → single upload
-    local presign_payload="{\\"filename\\": $(printf '%s' "$FILENAME" | jq -Rs .), \\"contentType\\": \\"$mime\\", \\"size\\": $size}"
+    local presign_payload="{\\"filename\\": $(printf '%s' "$filename" | jq -Rs .), \\"contentType\\": \\"$mime\\", \\"size\\": $size}"
     local presign
     presign=$(api_post "/api/upload/presign" "$presign_payload")
     local upload_id
     upload_id=$(echo "$presign" | jq -r '.uploadId')
     r2_key=$(echo "$presign" | jq -r '.r2_key // .r2Key')
 
-    upload_simple "$filepath" "$upload_id" "$size" "$FILENAME"
+    upload_simple "$filepath" "$upload_id" "$size" "$filename"
   fi
 
-  if [ -t 2 ]; then
-    printf "\\r\\033[K" >&2
-  fi
+  [ -t 2 ] && printf "\\r\\033[K" >&2
 
-  # Create share
   local common
   common=$(json_common)
-  local share_payload="{\\"filename\\": $(printf '%s' "$FILENAME" | jq -Rs .), \\"content_type\\": \\"$mime\\", \\"size\\": $size, \\"r2_key\\": $(printf '%s' "$r2_key" | jq -Rs .)$common}"
+  local share_payload="{\\"filename\\": $(printf '%s' "$filename" | jq -Rs .), \\"content_type\\": \\"$mime\\", \\"size\\": $size, \\"r2_key\\": $(printf '%s' "$r2_key" | jq -Rs .)$common}"
   local result
   result=$(api_post "/api/shares/files" "$share_payload")
   local slug
   slug=$(echo "$result" | jq -r '.slug')
 
   [ -n "$tmpfile" ] && rm -f "$tmpfile"
-  output_url "$slug" "File" "\${TITLE:-$FILENAME}"
+  output_url "$slug" "File" "\${OPT_TITLE:-$filename}"
 }
 
-cmd_list() {
-  local page=1 type_filter="" count=20
-  local search_args=()
-  while [ \$# -gt 0 ]; do
-    case "$1" in
-      -p|--page)  page="$2";        shift 2 ;;
-      -T|--type)  type_filter="$2";  shift 2 ;;
-      -n|--count) count="$2";        shift 2 ;;
-      *)          search_args+=("$1"); shift ;;
-    esac
-  done
+# ── Mode: link ────────────────────────────────────────────────────────────
+do_link() {
+  local url="\${1:-}"
+  [ -z "$url" ] && die "Usage: share --link <url> [-t title]"
+
+  local common
+  common=$(json_common)
+  local payload="{\\"url\\": $(printf '%s' "$url" | jq -Rs .)$common}"
+
+  local result
+  result=$(api_post "/api/shares/links" "$payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  output_url "$slug" "Link" "\${OPT_TITLE:-}"
+}
+
+# ── Mode: markdown ────────────────────────────────────────────────────────
+do_markdown() {
+  local filepath="\${1:-}"
+  local content
+  if [ -n "$filepath" ]; then
+    [ -f "$filepath" ] || die "File not found: $filepath"
+    content=$(cat "$filepath")
+  elif [ ! -t 0 ]; then
+    content=$(cat)
+  else
+    die "Usage: share --markdown <file>\\n       cat doc.md | share --markdown"
+  fi
+
+  local common
+  common=$(json_common)
+  local payload="{\\"content\\": $(printf '%s' "$content" | jq -Rs .)$common}"
+
+  local result
+  result=$(api_post "/api/shares/markdown" "$payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  output_url "$slug" "Markdown" "\${OPT_TITLE:-\${filepath:+$(basename "$filepath")}}"
+}
+
+# ── Mode: code ────────────────────────────────────────────────────────────
+do_code() {
+  local filepath="\${1:-}"
+  local content
+  if [ -n "$filepath" ]; then
+    [ -f "$filepath" ] || die "File not found: $filepath"
+    content=$(cat "$filepath")
+  elif [ ! -t 0 ]; then
+    content=$(cat)
+  else
+    die "Usage: share --code <file> [-l lang]\\n       echo 'code' | share --code -l python"
+  fi
+
+  local common
+  common=$(json_common)
+  local extra=""
+  [ -n "\${OPT_LANG:-}" ]  && extra+=", \\"language\\": \\"$OPT_LANG\\""
+  [ -n "$filepath" ]       && extra+=", \\"filename\\": $(printf '%s' "$(basename "$filepath")" | jq -Rs .)"
+  local payload="{\\"content\\": $(printf '%s' "$content" | jq -Rs .)$extra$common}"
+
+  local result
+  result=$(api_post "/api/shares/code" "$payload")
+  local slug
+  slug=$(echo "$result" | jq -r '.slug')
+
+  output_url "$slug" "Code" "\${OPT_TITLE:-\${filepath:+$(basename "$filepath")}}"
+}
+
+# ── Mode: list ────────────────────────────────────────────────────────────
+do_list() {
+  local search="\${1:-}"
+  local page="\${OPT_PAGE:-1}"
+  local count="\${OPT_COUNT:-20}"
+  local type_filter="\${OPT_TYPE:-}"
 
   local query="page=\${page}&per_page=\${count}"
   [ -n "$type_filter" ] && query+="&type=\${type_filter}"
-  [ "\${#search_args[@]}" -gt 0 ] && query+="&search=$(printf '%s' "\${search_args[0]}" | jq -Rr @uri)"
+  [ -n "$search" ] && query+="&search=$(printf '%s' "$search" | jq -Rr @uri)"
 
   local resp
   resp=$(api_get "/api/shares?\${query}")
 
   if [ -t 1 ]; then
-    local total page_num
+    local total page_num count_shown
     total=$(echo "$resp" | jq -r '.meta.total')
     page_num=$(echo "$resp" | jq -r '.meta.page')
-    local count_shown
     count_shown=$(echo "$resp" | jq -r '.data | length')
 
     if [ "$count_shown" -eq 0 ]; then
@@ -681,11 +626,11 @@ cmd_list() {
   fi
 }
 
-cmd_delete() {
-  [ \$# -eq 0 ] && die "Usage: share delete <slug>"
-  local slug="$1"
+# ── Mode: delete ──────────────────────────────────────────────────────────
+do_delete() {
+  local slug="\${1:-}"
+  [ -z "$slug" ] && die "Usage: share --delete <slug>"
 
-  # Find the share by slug
   local resp
   resp=$(api_get "/api/shares?search=\${slug}&per_page=100")
   local share_id
@@ -693,7 +638,6 @@ cmd_delete() {
 
   [ -z "$share_id" ] && die "Share not found: $slug"
 
-  # Confirm unless piped
   if [ -t 0 ] && [ -t 1 ]; then
     printf "  Delete share \${BOLD}%s\${RESET}? [y/N] " "$slug"
     read -r confirm
@@ -707,67 +651,88 @@ cmd_delete() {
   fi
 }
 
-cmd_help() {
+# ── Help ──────────────────────────────────────────────────────────────────
+show_help() {
   cat <<HELP
 \${BOLD}share\${RESET} — CLI for OWG Share (\${DIM}\${BASE_URL}\${RESET})
 
 \${BOLD}USAGE\${RESET}
-  share <command> [file] [options]
-
-\${BOLD}COMMANDS\${RESET}
-  \${GREEN}link\${RESET} <url>                Share a URL redirect
-  \${GREEN}markdown\${RESET} [file]           Share markdown (file or stdin)
-  \${GREEN}code\${RESET} [file] [-l lang]      Share code (file or stdin)
-  \${GREEN}file\${RESET} [path]                Upload and share a file (path or stdin)
-  \${GREEN}list\${RESET} [search]             List shares (with optional search)
-  \${GREEN}delete\${RESET} <slug>              Delete a share by slug
-  \${GREEN}help\${RESET}                       Show this help
+  share [file]                          Upload a file (default)
+  cat data | share                      Upload from stdin
+  share --link <url>                    Share a URL redirect
+  share --markdown [file]               Share markdown
+  share --code [file]                   Share code
+  share --list [search]                 List shares
+  share --delete <slug>                 Delete a share
 
 \${BOLD}OPTIONS\${RESET}
-  -t, --title <title>     Set share title
-  -c, --comment <text>    Add internal comment
-  -s, --slug <slug>       Set a custom slug (vanity URL)
-  -e, --expires <when>    Set expiration (default: 90d)
-                          Formats: 90d, 2w, 24h, never, or ISO 8601
-  -m, --max-hits <n>      Set maximum view count
-  -l, --language <lang>   Set language (code only)
-  -n, --name <filename>   Override filename (file only, useful with stdin)
-
-\${BOLD}LIST OPTIONS\${RESET}
-  -p, --page <n>          Page number (default: 1)
-  -T, --type <type>       Filter by type (link, markdown, code, file, gallery)
-  -n, --count <n>         Results per page (default: 20)
+  -t, --title <title>       Set share title
+  -c, --comment <text>      Add internal comment
+  -s, --slug <slug>         Custom slug (vanity URL)
+  -e, --expires <when>      Expiration (default: 90d)
+                            Formats: 90d, 2w, 24h, never, ISO 8601
+  -m, --max-hits <n>        Maximum view count
+  -n, --name <filename>     Override filename (useful with stdin)
+  -l, --language <lang>     Language (--code only)
+  -p, --page <n>            Page number (--list only)
+  -T, --type <type>         Filter by type (--list only)
+      --count <n>           Results per page (--list only, default: 20)
 
 \${BOLD}EXAMPLES\${RESET}
-  share link https://example.com -t "Example"
-  share link https://example.com -s my-link       \${DIM}# custom slug\${RESET}
-  share markdown README.md -e 7d                  \${DIM}# expires in 7 days\${RESET}
-  share code main.py -l python -e never            \${DIM}# no expiry\${RESET}
-  share file photo.jpg -t "Vacation photo"
-  echo "hello world" | share markdown
-  cat backup.tar.gz | share file -n backup.tar.gz
-  share list                                       \${DIM}# list recent shares\${RESET}
-  share list -T code                               \${DIM}# list code shares only\${RESET}
-  share delete abc123                              \${DIM}# delete by slug\${RESET}
-  share link https://x.com/post | pbcopy           \${DIM}# pipe-friendly output\${RESET}
+  share photo.jpg                                   \${DIM}# upload a file\${RESET}
+  share photo.jpg -t "Vacation"                     \${DIM}# with a title\${RESET}
+  share photo.jpg -s vacation -e 7d                 \${DIM}# custom slug, 7d expiry\${RESET}
+  cat backup.tar.gz | share -n backup.tar.gz        \${DIM}# from stdin\${RESET}
+  share --link https://example.com                  \${DIM}# share a link\${RESET}
+  share --markdown README.md                        \${DIM}# share markdown\${RESET}
+  cat notes.md | share --markdown                   \${DIM}# markdown from stdin\${RESET}
+  share --code main.py -l python                    \${DIM}# share code\${RESET}
+  share --list                                      \${DIM}# list shares\${RESET}
+  share --list -T code                              \${DIM}# list code shares\${RESET}
+  share --delete abc123                             \${DIM}# delete by slug\${RESET}
+  share photo.jpg | pbcopy                          \${DIM}# pipe-friendly\${RESET}
 HELP
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
 check_deps
 
-cmd="\${1:-help}"
-shift 2>/dev/null || true
+# Parse all options first, collect positional args
+MODE="file"
+OPT_TITLE="" OPT_COMMENT="" OPT_EXPIRES="90d" OPT_MAX_HITS="" OPT_SLUG=""
+OPT_NAME="" OPT_LANG="" OPT_PAGE="1" OPT_COUNT="20" OPT_TYPE=""
+POSITIONAL=()
 
-case "$cmd" in
-  link)     cmd_link "$@" ;;
-  markdown|md) cmd_markdown "$@" ;;
-  code)     cmd_code "$@" ;;
-  file)     cmd_file "$@" ;;
-  list|ls)  cmd_list "$@" ;;
-  delete|rm) cmd_delete "$@" ;;
-  help|-h|--help) cmd_help ;;
-  *)        die "Unknown command: $cmd. Run 'share help' for usage." ;;
+while [ \$# -gt 0 ]; do
+  case "$1" in
+    --link)       MODE="link";     shift ;;
+    --markdown|--md) MODE="markdown"; shift ;;
+    --code)       MODE="code";     shift ;;
+    --list|--ls)  MODE="list";     shift ;;
+    --delete|--rm) MODE="delete";  shift ;;
+    --help|-h)    show_help; exit 0 ;;
+    -t|--title)    OPT_TITLE="$2";    shift 2 ;;
+    -c|--comment)  OPT_COMMENT="$2";  shift 2 ;;
+    -e|--expires)  OPT_EXPIRES="$2";  shift 2 ;;
+    -m|--max-hits) OPT_MAX_HITS="$2"; shift 2 ;;
+    -s|--slug)     OPT_SLUG="$2";     shift 2 ;;
+    -n|--name)     OPT_NAME="$2";     shift 2 ;;
+    -l|--language) OPT_LANG="$2";     shift 2 ;;
+    -p|--page)     OPT_PAGE="$2";     shift 2 ;;
+    -T|--type)     OPT_TYPE="$2";     shift 2 ;;
+    --count)       OPT_COUNT="$2";    shift 2 ;;
+    -*)            die "Unknown option: $1. Run 'share --help' for usage." ;;
+    *)             POSITIONAL+=("$1"); shift ;;
+  esac
+done
+
+case "$MODE" in
+  file)     do_file "\${POSITIONAL[0]:-}" ;;
+  link)     do_link "\${POSITIONAL[0]:-}" ;;
+  markdown) do_markdown "\${POSITIONAL[0]:-}" ;;
+  code)     do_code "\${POSITIONAL[0]:-}" ;;
+  list)     do_list "\${POSITIONAL[0]:-}" ;;
+  delete)   do_delete "\${POSITIONAL[0]:-}" ;;
 esac
 `;
 }
