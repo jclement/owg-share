@@ -459,6 +459,7 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
   const isPdf = file.content_type === "application/pdf";
 
   const downloadUrl = `/s/${slug}/download`;
+  const inlineUrl = `/s/${slug}/download?inline`;
 
   const handleEncryptedDownload = async () => {
     if (!cryptoKey) return;
@@ -504,7 +505,7 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
     return () => { if (decryptedUrl) URL.revokeObjectURL(decryptedUrl); };
   }, [cryptoKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const previewUrl = decryptedUrl || (!cryptoKey ? downloadUrl : null);
+  const previewUrl = decryptedUrl || (!cryptoKey ? (isPdf ? inlineUrl : downloadUrl) : null);
 
   return (
     <div className="space-y-6">

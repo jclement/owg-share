@@ -136,10 +136,13 @@ publicRoutes.get("/:slug/download", async (c) => {
   const object = await c.env.R2.get(r2Key);
   if (!object) return error("File not found in storage", "NOT_FOUND", 404);
 
+  const inline = c.req.query("inline") !== undefined;
+  const disposition = inline ? "inline" : "attachment";
+
   return new Response(object.body, {
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${filename.replace(/["\\]/g, '_')}"`,
+      "Content-Disposition": `${disposition}; filename="${filename.replace(/["\\]/g, '_')}"`,
       "Cache-Control": "private, max-age=3600",
     },
   });
