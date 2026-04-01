@@ -2,12 +2,8 @@
 fnox = "latest"
 node = "22"
 
-[plugins]
-fnox-env = "https://github.com/jdx/mise-env-fnox"
-
 [env]
 _.path = ["{{config_root}}/node_modules/.bin"]
-_.fnox-env = { tools = true }
 
 
 [tasks.dev]
@@ -27,7 +23,7 @@ depends = ["build"]
 
 [tasks.deploy]
 description = "Build and deploy to Cloudflare"
-run = "vite build && wrangler deploy"
+run = "vite build && fnox run -- wrangler deploy"
 depends = ["install"]
 
 [tasks.test]
@@ -56,7 +52,7 @@ run = "wrangler d1 migrations apply owg-share-db --local"
 
 [tasks."db:migrate:prod"]
 description = "Apply D1 migrations to production"
-run = "wrangler d1 migrations apply owg-share-db --remote"
+run = "fnox run -- wrangler d1 migrations apply owg-share-db --remote"
 
 [tasks."db:new"]
 description = "Create a new D1 migration"

@@ -488,8 +488,25 @@ CHUNK_SIZE=$((10 * 1024 * 1024))  # 10 MB per chunk
 MULTIPART_THRESHOLD=$((95 * 1024 * 1024))  # Use multipart above 95 MB
 
 upload_simple() {
-  local filepath="$1" upload_id="$2"
-  api_put_file "/api/upload/file/\${upload_id}" "$filepath" >/dev/null
+  local filepath="$1" upload_id="$2" size="\${3:-0}" filename="\${4:-}"
+  if [ -t 2 ] && [ "$size" -gt 0 ]; then
+    local bs=262144
+    local total_chunks=$(( (size + bs - 1) / bs ))
+    local i=0 sent=0
+    (
+      while [ "$i" -lt "$total_chunks" ]; do
+        dd if="$filepath" bs="$bs" skip="$i" count=1 2>/dev/null
+        sent=$(( (i + 1) * bs ))
+        [ "$sent" -gt "$size" ] && sent="$size"
+        progress_bar "$sent" "$size" "$filename"
+        i=$((i + 1))
+      done
+    ) | curl -sf -X PUT "\${BASE_URL}/api/upload/file/\${upload_id}" \\
+        -H "Authorization: Bearer \${API_KEY}" \\
+        --data-binary @- >/dev/null 2>/dev/null || die "File upload failed"
+  else
+    api_put_file "/api/upload/file/\${upload_id}" "$filepath" >/dev/null
+  fi
 }
 
 upload_multipart() {
@@ -590,8 +607,7 @@ cmd_file() {
     upload_id=$(echo "$presign" | jq -r '.uploadId')
     r2_key=$(echo "$presign" | jq -r '.r2_key // .r2Key')
 
-    [ -t 2 ] && printf "  %s%s%s %s(%s)%s uploading...\\r" "\${BOLD}" "$FILENAME" "\${RESET}" "\${DIM}" "$(human_size "$size")" "\${RESET}" >&2
-    upload_simple "$filepath" "$upload_id"
+    upload_simple "$filepath" "$upload_id" "$size" "$FILENAME"
   fi
 
   if [ -t 2 ]; then
@@ -653,7 +669,10 @@ cmd_list() {
         code)     color="\${YELLOW}" ;;
         *)        color="" ;;
       esac
-      printf "  %s%-8s\${RESET} %-20s %-28s %6s  \${DIM}%s\${RESET}\\n" "$color" "$t" "\${s:0:20}" "\${title:0:28}" "$h" "$created"
+      local td="\${title:0:28}"
+      local pad=$((28 - \${#td}))
+      printf -v td '%s%*s' "$td" "$pad" ""
+      printf "  %s%-8s\${RESET} %-20s %s %6s  \${DIM}%s\${RESET}\\n" "$color" "$t" "\${s:0:20}" "$td" "$h" "$created"
     done
 
     printf "\\n  \${DIM}%s shares · page %s\${RESET}\\n\\n" "$total" "$page_num"
