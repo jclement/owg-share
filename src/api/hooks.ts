@@ -5,6 +5,7 @@ import { api, fetchPaginated } from "./client";
 export interface AuthStatus {
   authenticated: boolean;
   needsSetup: boolean;
+  appName: string;
   user?: { id: string; username: string; created_at: string };
 }
 

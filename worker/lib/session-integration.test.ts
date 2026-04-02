@@ -20,7 +20,6 @@ function createMockEnv(): Env {
     ASSETS: {} as Fetcher,
     ENVIRONMENT: "test",
     APP_NAME: "Test",
-    SESSION_SECRET: "test-secret",
     RP_ID: "localhost",
     RP_ORIGIN: "http://localhost:5173",
   } as unknown as Env;

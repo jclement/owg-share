@@ -25,12 +25,12 @@ auth.get("/status", async (c) => {
 
   const token = getSessionToken(c.req.raw);
   if (!token) {
-    return json({ authenticated: false, needsSetup });
+    return json({ authenticated: false, needsSetup, appName: c.env.APP_NAME });
   }
 
   const session = await getSession(c.env, token);
   if (!session) {
-    return json({ authenticated: false, needsSetup });
+    return json({ authenticated: false, needsSetup, appName: c.env.APP_NAME });
   }
 
   const user = await c.env.DB.prepare("SELECT id, username, created_at FROM users WHERE id = ?")
@@ -38,10 +38,10 @@ auth.get("/status", async (c) => {
     .first<User>();
 
   if (!user) {
-    return json({ authenticated: false, needsSetup });
+    return json({ authenticated: false, needsSetup, appName: c.env.APP_NAME });
   }
 
-  return json({ authenticated: true, needsSetup: false, user });
+  return json({ authenticated: true, needsSetup: false, user, appName: c.env.APP_NAME });
 });
 
 // Registration - generate options

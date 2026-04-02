@@ -1,3 +1,2 @@
-SESSION_SECRET=change-me-to-a-random-string
 RP_ID=localhost
 RP_ORIGIN=http://localhost:5173

@@ -5,7 +5,6 @@ export interface Env {
   ASSETS: Fetcher;
   ENVIRONMENT: string;
   APP_NAME: string;
-  SESSION_SECRET: string;
   RP_ID: string;
   RP_ORIGIN: string;
 }

@@ -65,7 +65,6 @@ function createMockEnv(db: MockDB) {
     ASSETS: { fetch: vi.fn() },
     ENVIRONMENT: "test",
     APP_NAME: "owg-share-test",
-    SESSION_SECRET: "test-secret",
     RP_ID: "localhost",
     RP_ORIGIN: "http://localhost",
   };

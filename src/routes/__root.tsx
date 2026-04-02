@@ -25,13 +25,17 @@ function RootLayout() {
 function AuthGate() {
   const { data: auth, isLoading } = useAuthStatus();
 
+  useEffect(() => {
+    if (auth?.appName) document.title = auth.appName;
+  }, [auth?.appName]);
+
   if (isLoading) return <FullPageSpinner />;
 
   if (auth?.needsSetup || !auth?.authenticated) {
     return <Outlet />;
   }
 
-  return <AppShell username={auth.user?.username || ""} />;
+  return <AppShell username={auth.user?.username || ""} appName={auth.appName || "Share"} />;
 }
 
 function ThemeToggle() {
@@ -130,14 +134,14 @@ function UserMenu({ username }: { username: string }) {
   );
 }
 
-function AppShell({ username }: { username: string }) {
+function AppShell({ username, appName }: { username: string; appName: string }) {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="flex items-center justify-between px-4 lg:px-6 h-14 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
         <Link to="/" className="flex items-center gap-2 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
           <Share2 size={20} className="text-primary" />
-          OWG Share
+          {appName}
         </Link>
 
         <div className="flex items-center gap-3">

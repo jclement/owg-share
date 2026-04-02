@@ -108,7 +108,6 @@ function buildEnv(overrides: Record<string, any> = {}) {
     ASSETS: createMockAssets(),
     ENVIRONMENT: "test",
     APP_NAME: "share-test",
-    SESSION_SECRET: "secret",
     RP_ID: "localhost",
     RP_ORIGIN: "http://localhost",
     ...overrides,

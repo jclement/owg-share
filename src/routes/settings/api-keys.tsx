@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { useApiKeys, useCreateApiKey, useDeleteApiKey } from "../../api/hooks";
+import { useApiKeys, useCreateApiKey, useDeleteApiKey, useAuthStatus } from "../../api/hooks";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
@@ -13,6 +13,7 @@ export const Route = createFileRoute("/settings/api-keys")({
 });
 
 function ApiKeysPage() {
+  const { data: auth } = useAuthStatus();
   const { data: apiKeys, isLoading } = useApiKeys();
   const createApiKey = useCreateApiKey();
   const deleteApiKey = useDeleteApiKey();
@@ -183,7 +184,7 @@ curl -X POST $BASE_URL/api/shares/files \\
                 {copiedKey ? <Check size={16} /> : <Copy size={16} />}
               </Button>
             </div>
-            <Button onClick={() => downloadShareScript(newKeyResult.key)} variant="secondary" className="w-full">
+            <Button onClick={() => downloadShareScript(newKeyResult.key, auth?.appName || "Share")} variant="secondary" className="w-full">
               <Download size={16} /> Download share.sh
             </Button>
             <Button onClick={() => { setShowCreate(false); setNewKeyResult(null); }} className="w-full" variant="ghost">
@@ -201,9 +202,9 @@ curl -X POST $BASE_URL/api/shares/files \\
   );
 }
 
-function downloadShareScript(apiKey: string) {
+function downloadShareScript(apiKey: string, appName: string) {
   const baseUrl = window.location.origin;
-  const script = generateShareScript(apiKey, baseUrl);
+  const script = generateShareScript(apiKey, baseUrl, appName);
   const blob = new Blob([script], { type: "application/x-shellscript" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -213,7 +214,7 @@ function downloadShareScript(apiKey: string) {
   URL.revokeObjectURL(url);
 }
 
-function generateShareScript(apiKey: string, baseUrl: string): string {
+function generateShareScript(apiKey: string, baseUrl: string, appName: string): string {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -654,7 +655,7 @@ do_delete() {
 # ── Help ──────────────────────────────────────────────────────────────────
 show_help() {
   cat <<HELP
-\${BOLD}share\${RESET} — CLI for OWG Share (\${DIM}\${BASE_URL}\${RESET})
+\${BOLD}share\${RESET} — CLI for ${appName} (\${DIM}\${BASE_URL}\${RESET})
 
 \${BOLD}USAGE\${RESET}
   share [file]                          Upload a file (default)

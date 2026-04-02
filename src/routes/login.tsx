@@ -61,7 +61,7 @@ function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Share2 size={48} className="mx-auto text-primary mb-4" />
-          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">OWG Share</h1>
+          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">{auth?.appName || "Share"}</h1>
           <p className="text-neutral-500 mt-2">Sign in to your account</p>
         </div>
 
