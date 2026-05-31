@@ -7,10 +7,11 @@ import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { NewShareWizard } from "../components/NewShareWizard";
 import { EditShareModal } from "../components/EditShareModal";
+import { QrCodeModal } from "../components/QrCodeModal";
 import { useToast } from "../components/ui/Toast";
 import {
   Link as LinkIcon, FileText, Code, Upload, Images,
-  Eye, Plus, BarChart3, Copy, ExternalLink, Trash2, Search, Pencil, Lock, CloudUpload,
+  Eye, Plus, BarChart3, Copy, ExternalLink, Trash2, Search, Pencil, Lock, CloudUpload, QrCode,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -38,6 +39,7 @@ function Dashboard() {
 function DashboardContent() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editingShareId, setEditingShareId] = useState<string | null>(null);
+  const [qrShare, setQrShare] = useState<{ slug: string; title: string } | null>(null);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [page, setPage] = useState(1);
@@ -175,7 +177,7 @@ function DashboardContent() {
       ) : shares?.data && shares.data.length > 0 ? (
         <>
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
-            <div className="hidden sm:grid grid-cols-[2rem_2rem_1fr_1fr_6rem_5rem_8.5rem] gap-4 px-4 py-2.5 text-xs font-medium text-neutral-500 border-b border-neutral-200 dark:border-neutral-800">
+            <div className="hidden sm:grid grid-cols-[2rem_2rem_1fr_1fr_6rem_5rem_10.5rem] gap-4 px-4 py-2.5 text-xs font-medium text-neutral-500 border-b border-neutral-200 dark:border-neutral-800">
               <div></div>
               <div></div>
               <div>Title / Slug</div>
@@ -189,7 +191,7 @@ function DashboardContent() {
               return (
                 <div
                   key={share.id}
-                  className="grid grid-cols-1 sm:grid-cols-[2rem_2rem_1fr_1fr_6rem_5rem_8.5rem] gap-2 sm:gap-4 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors items-center"
+                  className="grid grid-cols-1 sm:grid-cols-[2rem_2rem_1fr_1fr_6rem_5rem_10.5rem] gap-2 sm:gap-4 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors items-center"
                 >
                   <Icon size={16} className={`${typeColors[share.type]} hidden sm:block`} />
                   <div className="hidden sm:flex items-center justify-center">
@@ -218,6 +220,9 @@ function DashboardContent() {
                     </button>
                     <button onClick={() => copyUrl(share.slug, !!share.encrypted)} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" title="Copy URL">
                       <Copy size={15} />
+                    </button>
+                    <button onClick={() => setQrShare({ slug: share.slug, title: share.title || share.slug })} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" title="QR code">
+                      <QrCode size={15} />
                     </button>
                     <a href={`/s/${share.slug}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" title="Open">
                       <ExternalLink size={15} />
@@ -281,6 +286,12 @@ function DashboardContent() {
 
       <NewShareWizard open={wizardOpen} onClose={() => { setWizardOpen(false); setDroppedFile(null); }} initialFile={droppedFile} />
       <EditShareModal open={!!editingShareId} onClose={() => setEditingShareId(null)} shareId={editingShareId} />
+      <QrCodeModal
+        open={!!qrShare}
+        onClose={() => setQrShare(null)}
+        url={qrShare ? `${window.location.origin}/s/${qrShare.slug}` : ""}
+        title={qrShare?.title}
+      />
     </div>
   );
 }

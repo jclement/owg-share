@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Copy, Check, ExternalLink, AlertTriangle } from "lucide-react";
+import { Copy, Check, ExternalLink, AlertTriangle, QrCode } from "lucide-react";
 import { Button } from "./ui/Button";
+import { QrCodeModal } from "./QrCodeModal";
 
 interface ShareResultProps {
   slug: string;
@@ -9,7 +10,17 @@ interface ShareResultProps {
   onDone: () => void;
 }
 
-function CopyBox({ label, value, description }: { label: string; value: string; description?: string }) {
+function CopyBox({
+  label,
+  value,
+  description,
+  onShowQr,
+}: {
+  label: string;
+  value: string;
+  description?: string;
+  onShowQr?: () => void;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -28,6 +39,11 @@ function CopyBox({ label, value, description }: { label: string; value: string; 
         <code className="flex-1 text-sm text-primary dark:text-primary-light bg-neutral-50 dark:bg-neutral-950 px-3 py-2 rounded-lg font-mono break-all">
           {value}
         </code>
+        {onShowQr && (
+          <Button variant="secondary" size="sm" onClick={onShowQr} title="Show QR code">
+            <QrCode size={16} />
+          </Button>
+        )}
         <Button variant="secondary" size="sm" onClick={handleCopy}>
           {copied ? <Check size={16} /> : <Copy size={16} />}
         </Button>
@@ -38,6 +54,7 @@ function CopyBox({ label, value, description }: { label: string; value: string; 
 
 export function ShareResult({ slug, encrypted, encryptionKey, onDone }: ShareResultProps) {
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState<{ url: string; title: string } | null>(null);
   const baseUrl = window.location.origin;
   const shareUrl = `${baseUrl}/s/${slug}`;
   const fullUrl = encrypted && encryptionKey
@@ -58,6 +75,7 @@ export function ShareResult({ slug, encrypted, encryptionKey, onDone }: ShareRes
             label="Link (without key)"
             description="This URL alone won't decrypt the content"
             value={shareUrl}
+            onShowQr={() => setQr({ url: shareUrl, title: "Link (without key)" })}
           />
           <CopyBox
             label="Encryption Key"
@@ -68,6 +86,7 @@ export function ShareResult({ slug, encrypted, encryptionKey, onDone }: ShareRes
             label="Full Link (with key)"
             description="Anyone with this link can view the content"
             value={fullUrl}
+            onShowQr={() => setQr({ url: fullUrl, title: "Full Link (with key)" })}
           />
           <div className="flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300 dark:border-yellow-800/50 rounded-lg">
             <AlertTriangle size={18} className="text-yellow-600 dark:text-yellow-500 mt-0.5 shrink-0" />
@@ -83,6 +102,9 @@ export function ShareResult({ slug, encrypted, encryptionKey, onDone }: ShareRes
             <code className="flex-1 text-sm text-primary dark:text-primary-light bg-neutral-50 dark:bg-neutral-950 px-3 py-2 rounded-lg font-mono break-all">
               {fullUrl}
             </code>
+            <Button variant="secondary" size="sm" onClick={() => setQr({ url: fullUrl, title: "Share URL" })} title="Show QR code">
+              <QrCode size={16} />
+            </Button>
             <Button variant="secondary" size="sm" onClick={handleCopy}>
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </Button>
@@ -100,6 +122,13 @@ export function ShareResult({ slug, encrypted, encryptionKey, onDone }: ShareRes
           </Button>
         </a>
       </div>
+
+      <QrCodeModal
+        open={!!qr}
+        onClose={() => setQr(null)}
+        url={qr?.url ?? ""}
+        title={qr?.title}
+      />
     </div>
   );
 }
