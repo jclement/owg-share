@@ -407,9 +407,10 @@ describe("Public routes", () => {
       expect(await res.text()).toBe("");
     });
 
-    it("returns 400 for file share", async () => {
+    it("returns 400 for non-HTML file share", async () => {
       const share = makeShare({ type: "file" });
-      const db = createMockDB({ share });
+      const file = { filename: "data.zip", content_type: "application/zip", r2_key: "files/data.zip" };
+      const db = createMockDB({ share, file });
       const env = buildEnv({ DB: db });
       const ctx = buildExecutionCtx();
 
@@ -418,6 +419,50 @@ describe("Public routes", () => {
 
       const body = await res.json<any>();
       expect(body.error.code).toBe("UNSUPPORTED");
+    });
+
+    it("serves HTML file share as sandboxed text/html", async () => {
+      const share = makeShare({ type: "file" });
+      const file = { filename: "page.html", content_type: "text/html; charset=utf-8", r2_key: "files/page.html" };
+      const html = "<html><body>Hi</body></html>";
+      const db = createMockDB({ share, file });
+      const env = buildEnv({ DB: db, R2: createMockR2(new TextEncoder().encode(html)) });
+      const ctx = buildExecutionCtx();
+
+      const res = await request(app, "/test-slug/raw", env, ctx);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+      expect(res.headers.get("Content-Security-Policy")).toContain("sandbox");
+      expect(res.headers.get("Content-Security-Policy")).not.toContain("allow-same-origin");
+      expect(await res.text()).toBe(html);
+    });
+
+    it("returns 400 for encrypted HTML file share", async () => {
+      const share = makeShare({ type: "file", encrypted: 1 });
+      const file = { filename: "page.html", content_type: "text/html", r2_key: "files/page.html" };
+      const db = createMockDB({ share, file });
+      const env = buildEnv({ DB: db });
+      const ctx = buildExecutionCtx();
+
+      const res = await request(app, "/test-slug/raw", env, ctx);
+      expect(res.status).toBe(400);
+
+      const body = await res.json<any>();
+      expect(body.error.code).toBe("UNSUPPORTED");
+    });
+
+    it("returns 404 when HTML file object is missing from R2", async () => {
+      const share = makeShare({ type: "file" });
+      const file = { filename: "page.html", content_type: "text/html", r2_key: "files/page.html" };
+      const db = createMockDB({ share, file });
+      const env = buildEnv({ DB: db, R2: createMockR2Missing() });
+      const ctx = buildExecutionCtx();
+
+      const res = await request(app, "/test-slug/raw", env, ctx);
+      expect(res.status).toBe(404);
+
+      const body = await res.json<any>();
+      expect(body.error.code).toBe("NOT_FOUND");
     });
 
     it("returns 400 for link share", async () => {

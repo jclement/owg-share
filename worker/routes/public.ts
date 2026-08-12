@@ -104,6 +104,30 @@ publicRoutes.get("/:slug/raw", async (c) => {
     return new Response(code?.content || "", { headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
 
+  // HTML file shares render as a standalone page. Encrypted files are ciphertext
+  // in R2, so there is nothing meaningful to serve raw.
+  if (share.type === "file" && !share.encrypted) {
+    const fileData = await c.env.DB.prepare(
+      "SELECT content_type, r2_key FROM file_shares WHERE share_id = ?"
+    ).bind(share.id).first<{ content_type: string; r2_key: string }>();
+
+    const contentType = fileData?.content_type.trim().toLowerCase().split(";")[0] ?? "";
+    if (contentType === "text/html" || contentType === "application/xhtml+xml") {
+      const object = await c.env.R2.get(fileData!.r2_key.trim());
+      if (!object) return error("File not found in storage", "NOT_FOUND", 404);
+
+      return new Response(object.body, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          // Opaque-origin sandbox: the shared page can run its own scripts but
+          // cannot reach this app's cookies, storage, or API as same-origin.
+          "Content-Security-Policy": "sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads",
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
+    }
+  }
+
   return error("Raw view not supported for this share type", "UNSUPPORTED", 400);
 });
 

@@ -11,7 +11,7 @@ import {
 } from "../../lib/crypto";
 import {
   Download, Copy, Check, Lock, Eye, Calendar,
-  File, ChevronLeft, ChevronRight, X, FileCode
+  File, ChevronLeft, ChevronRight, X, FileCode, ExternalLink
 } from "lucide-react";
 import { formatBytes, escapeHtml, inferLanguage } from "../../lib/format";
 
@@ -453,13 +453,16 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
   if (!file) return null;
   const [downloading, setDownloading] = useState(false);
   const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null);
+  const baseType = file.content_type.split(";")[0].trim().toLowerCase();
   const isImage = file.content_type.startsWith("image/");
   const isVideo = file.content_type.startsWith("video/");
   const isAudio = file.content_type.startsWith("audio/");
   const isPdf = file.content_type === "application/pdf";
+  const isHtml = baseType === "text/html" || baseType === "application/xhtml+xml";
 
   const downloadUrl = `/s/${slug}/download`;
   const inlineUrl = `/s/${slug}/download?inline`;
+  const rawUrl = `/s/${slug}/raw`;
 
   const handleEncryptedDownload = async () => {
     if (!cryptoKey) return;
@@ -488,7 +491,7 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
     if (!cryptoKey || encrypted) return;
     // cryptoKey is set but encrypted=false means EncryptedView already validated the key
     // Fetch and decrypt for inline preview
-    if (isImage || isVideo || isAudio || isPdf) {
+    if (isImage || isVideo || isAudio || isPdf || isHtml) {
       (async () => {
         try {
           const res = await fetch(downloadUrl, { credentials: "same-origin" });
@@ -505,7 +508,7 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
     return () => { if (decryptedUrl) URL.revokeObjectURL(decryptedUrl); };
   }, [cryptoKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const previewUrl = decryptedUrl || (!cryptoKey ? (isPdf ? inlineUrl : downloadUrl) : null);
+  const previewUrl = decryptedUrl || (!cryptoKey ? (isPdf ? inlineUrl : isHtml ? rawUrl : downloadUrl) : null);
 
   return (
     <div className="space-y-6">
@@ -515,6 +518,11 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
           <div className="font-medium text-neutral-800 dark:text-neutral-200">{file.filename}</div>
           <div className="text-sm text-neutral-500">{file.content_type} · {formatBytes(file.size)}</div>
         </div>
+        {isHtml && !cryptoKey && (
+          <a href={rawUrl} target="_blank" rel="noopener noreferrer">
+            <Button variant="secondary"><ExternalLink size={16} /> View page</Button>
+          </a>
+        )}
         {cryptoKey ? (
           <Button variant="secondary" onClick={handleEncryptedDownload} loading={downloading}>
             <Download size={16} /> Download
@@ -537,6 +545,13 @@ function FileRenderer({ slug, file, encrypted, cryptoKey }: { slug: string; file
       )}
       {previewUrl && isPdf && (
         <iframe src={previewUrl} className="w-full h-[80vh] rounded-lg border border-neutral-300 dark:border-neutral-800" />
+      )}
+      {previewUrl && isHtml && (
+        <iframe
+          src={previewUrl}
+          sandbox="allow-scripts allow-popups allow-forms allow-modals"
+          className="w-full h-[80vh] rounded-lg border border-neutral-300 dark:border-neutral-800 bg-white"
+        />
       )}
     </div>
   );
