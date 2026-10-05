@@ -26,7 +26,18 @@ die() { printf "%s%serror:%s %s\\n" "" "\${RED}" "\${RESET}" "$1" >&2; exit 1; }
 
 check_deps() {
   command -v curl >/dev/null 2>&1 || die "curl is required but not installed"
-  command -v jq   >/dev/null 2>&1 || die "jq is required but not installed (brew install jq)"
+  command -v jq   >/dev/null 2>&1 || die "jq is required but not installed ($(jq_hint))"
+}
+
+jq_hint() {
+  if   command -v brew    >/dev/null 2>&1; then echo "brew install jq"
+  elif command -v apt-get >/dev/null 2>&1; then echo "sudo apt-get install jq"
+  elif command -v dnf     >/dev/null 2>&1; then echo "sudo dnf install jq"
+  elif command -v pacman  >/dev/null 2>&1; then echo "sudo pacman -S jq"
+  elif command -v zypper  >/dev/null 2>&1; then echo "sudo zypper install jq"
+  elif command -v apk     >/dev/null 2>&1; then echo "apk add jq"
+  else echo "see https://jqlang.org/download/"
+  fi
 }
 
 api_post() {
@@ -70,16 +81,20 @@ api_delete() {
 }
 
 human_size() {
-  local bytes="$1"
+  local bytes="$1" unit suffix
   if [ "$bytes" -ge 1073741824 ]; then
-    printf "%.1f GB" "$(echo "$bytes / 1073741824" | bc -l)"
+    unit=1073741824 suffix="GB"
   elif [ "$bytes" -ge 1048576 ]; then
-    printf "%.1f MB" "$(echo "$bytes / 1048576" | bc -l)"
+    unit=1048576 suffix="MB"
   elif [ "$bytes" -ge 1024 ]; then
-    printf "%.1f KB" "$(echo "$bytes / 1024" | bc -l)"
+    unit=1024 suffix="KB"
   else
     printf "%d B" "$bytes"
+    return
   fi
+  # Integer math only: bc is not installed everywhere
+  local tenths=$(( (bytes * 10 + unit / 2) / unit ))
+  printf "%d.%d %s" $((tenths / 10)) $((tenths % 10)) "$suffix"
 }
 
 output_url() {
@@ -335,16 +350,20 @@ describe("CLI human_size", () => {
   function runHumanSize(bytes: number): string {
     const script = `
       human_size() {
-        local bytes="$1"
+        local bytes="$1" unit suffix
         if [ "$bytes" -ge 1073741824 ]; then
-          printf "%.1f GB" "$(echo "$bytes / 1073741824" | bc -l)"
+          unit=1073741824 suffix="GB"
         elif [ "$bytes" -ge 1048576 ]; then
-          printf "%.1f MB" "$(echo "$bytes / 1048576" | bc -l)"
+          unit=1048576 suffix="MB"
         elif [ "$bytes" -ge 1024 ]; then
-          printf "%.1f KB" "$(echo "$bytes / 1024" | bc -l)"
+          unit=1024 suffix="KB"
         else
           printf "%d B" "$bytes"
+          return
         fi
+        # Integer math only: bc is not installed everywhere
+        local tenths=$(( (bytes * 10 + unit / 2) / unit ))
+        printf "%d.%d %s" $((tenths / 10)) $((tenths % 10)) "$suffix"
       }
       human_size ${bytes}
     `;
